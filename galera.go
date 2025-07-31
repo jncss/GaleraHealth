@@ -445,8 +445,16 @@ func diagnoseMySQL(sshClient *SSHClient, nodeIP string) string {
 		diagnostic = append(diagnostic, "No MySQL socket files found")
 	}
 
-	// Check if port 3306 is listening (try both netstat and ss)
-	portCheck, _ := executeCmd("ss -tlnp | grep 3306 2>/dev/null || netstat -tlnp | grep 3306 2>/dev/null")
+	// Check if port 3306 is listening (try multiple methods)
+	portCheck, _ := executeCmd("ss -tlnp | grep 3306 2>/dev/null")
+	if portCheck == "" {
+		// Try netstat if ss didn't work
+		portCheck, _ = executeCmd("netstat -tlnp 2>/dev/null | grep 3306")
+	}
+	if portCheck == "" {
+		// Try lsof as another fallback
+		portCheck, _ = executeCmd("lsof -i :3306 2>/dev/null")
+	}
 	if portCheck != "" {
 		diagnostic = append(diagnostic, fmt.Sprintf("Port 3306 status: %s", strings.TrimSpace(portCheck)))
 	} else {
