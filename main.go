@@ -227,7 +227,7 @@ func main() {
 		logMinimal("")
 		logMinimal("🔍 Performing cluster coherence analysis...")
 
-		analysis, err := performClusterAnalysis(initialClusterInfo, connInfo, config)
+		analysis, localhostNodeIP, err := performClusterAnalysis(initialClusterInfo, connInfo, config)
 		if err != nil {
 			log.Fatal("Error performing cluster analysis:", err)
 		}
@@ -250,7 +250,7 @@ func main() {
 			logMinimal("")
 			logMinimal("🔍 Checking MySQL/MariaDB status on all nodes...")
 
-			err := checkMySQLStatusOnAllNodes(analysis, connInfo, mysqlCreds, config)
+			err := checkMySQLStatusOnAllNodes(analysis, connInfo, mysqlCreds, config, localhostNodeIP)
 			if err != nil {
 				log.Printf("Error checking MySQL status: %v", err)
 			}

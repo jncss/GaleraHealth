@@ -6,7 +6,7 @@ import (
 )
 
 // performClusterAnalysis analyzes cluster coherence across all nodes
-func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnectionInfo, config *Config) (*ClusterAnalysis, error) {
+func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnectionInfo, config *Config) (*ClusterAnalysis, string, error) {
 	analysis := &ClusterAnalysis{
 		InitialNode:  initialNode,
 		AllNodes:     []*GaleraClusterInfo{initialNode},
@@ -33,7 +33,7 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 	}
 
 	if len(analysis.ClusterNodes) == 0 {
-		return nil, fmt.Errorf("no cluster nodes found in wsrep_cluster_address")
+		return nil, "", fmt.Errorf("no cluster nodes found in wsrep_cluster_address")
 	}
 
 	fmt.Printf("📋 Found %d nodes in cluster configuration\n", len(analysis.ClusterNodes))
@@ -72,6 +72,12 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 			var newConnInfo *SSHConnectionInfo
 			sshClient, newConnInfo, err = createSSHConnectionWithNodeCredentials(nodeIP, config)
 			if err != nil {
+				// Create a node info with error to include in analysis
+				nodeInfo := &GaleraClusterInfo{
+					NodeIP:      nodeIP,
+					StatusError: fmt.Sprintf("SSH connection failed: %v", err),
+				}
+				analysis.AllNodes = append(analysis.AllNodes, nodeInfo)
 				analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Failed to connect to remote node %s: %v", nodeIP, err))
 				analysis.IsCoherent = false
 				fmt.Printf("      ❌ SSH connection failed: %v\n", err)
@@ -99,6 +105,12 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 			var newConnInfo *SSHConnectionInfo
 			sshClient, newConnInfo, err = createSSHConnectionWithNodeCredentials(nodeIP, config)
 			if err != nil {
+				// Create a node info with error to include in analysis
+				nodeInfo := &GaleraClusterInfo{
+					NodeIP:      nodeIP,
+					StatusError: fmt.Sprintf("SSH connection failed: %v", err),
+				}
+				analysis.AllNodes = append(analysis.AllNodes, nodeInfo)
 				analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Failed to connect to node %s: %v", nodeIP, err))
 				analysis.IsCoherent = false
 				fmt.Printf("      ❌ Connection failed: %v\n", err)
@@ -125,6 +137,12 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 
 		// Verify we have a valid SSH client
 		if sshClient == nil {
+			// Create a node info with error to include in analysis
+			nodeInfo := &GaleraClusterInfo{
+				NodeIP:      nodeIP,
+				StatusError: "SSH client is nil - connection failed",
+			}
+			analysis.AllNodes = append(analysis.AllNodes, nodeInfo)
 			analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("SSH client is nil for node %s", nodeIP))
 			analysis.IsCoherent = false
 			fmt.Printf("      ❌ SSH client is nil\n")
@@ -136,6 +154,12 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 		sshClient.Close()
 
 		if err != nil {
+			// Create a node info with error to include in analysis
+			nodeInfo = &GaleraClusterInfo{
+				NodeIP:      nodeIP,
+				StatusError: fmt.Sprintf("Failed to get cluster info: %v", err),
+			}
+			analysis.AllNodes = append(analysis.AllNodes, nodeInfo)
 			analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Failed to get cluster info from node %s: %v", nodeIP, err))
 			analysis.IsCoherent = false
 			fmt.Printf("      ❌ Failed to get cluster info: %v\n", err)
@@ -149,7 +173,7 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 	// Analyze configuration coherence
 	analysis.analyzeCoherence()
 
-	return analysis, nil
+	return analysis, localhostNodeIP, nil
 }
 
 // analyzeCoherence analyzes the coherence of cluster configuration across nodes
@@ -188,12 +212,19 @@ func (a *ClusterAnalysis) analyzeCoherence() {
 }
 
 // checkMySQLStatusOnAllNodes checks MySQL/MariaDB status on all nodes in the analysis
-func checkMySQLStatusOnAllNodes(analysis *ClusterAnalysis, connInfo *SSHConnectionInfo, mysqlCreds *MySQLConnectionInfo, config *Config) error {
+func checkMySQLStatusOnAllNodes(analysis *ClusterAnalysis, connInfo *SSHConnectionInfo, mysqlCreds *MySQLConnectionInfo, config *Config, localhostNodeIP string) error {
 	for i, node := range analysis.AllNodes {
 		fmt.Printf("   %d. %s - checking MySQL status...\n", i+1, node.NodeIP)
 
+		// Skip nodes that already have connection errors
+		if node.StatusError != "" && strings.Contains(node.StatusError, "SSH connection failed") {
+			fmt.Printf("      ❌ Skipping MySQL check due to SSH connection failure: %s\n", node.StatusError)
+			continue
+		}
+
 		// Check if this is localhost - use direct access instead of SSH
-		if isLocalhost(node.NodeIP) || connInfo.Username == "local" {
+		// Consider both localhost references and the identified localhost IP
+		if isLocalhost(node.NodeIP) || node.NodeIP == localhostNodeIP {
 			fmt.Printf("      🏠 Using local MySQL connection for localhost\n")
 			// Use nil SSH client for localhost - checkMySQLStatus will handle this
 			checkMySQLStatus(nil, node.NodeIP, mysqlCreds, node)
