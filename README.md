@@ -19,6 +19,7 @@ Additionally, it can perform a **cluster coherence analysis** by connecting to a
   - First attempt with SSH keys (id_rsa, id_ecdsa, id_ed25519)
   - Second attempt with password if keys fail
   - **Password reuse**: Automatically reuses entered password for subsequent nodes
+  - **Per-node credentials**: Supports different SSH/MySQL credentials for each cluster node
 - ✅ Automatic search in multiple configuration file locations
 - ✅ Runtime MySQL variables verification
 - ✅ Cluster nodes parsing
@@ -27,6 +28,14 @@ Additionally, it can perform a **cluster coherence analysis** by connecting to a
   - Verifies configuration consistency across nodes
   - Checks `wsrep_cluster_name`, `wsrep_cluster_address`, `wsrep_node_name`, `wsrep_node_address`
   - Provides detailed analysis and recommendations
+  - **Mixed authentication support**: Different nodes can use different authentication methods
+- ✅ **Persistent configuration with encryption**:
+  - Saves connection preferences and credentials securely
+  - AES-GCM encryption for sensitive data
+  - Per-node credential storage for mixed environments
+- ✅ **Localhost optimization**: Direct file access when running on cluster nodes
+- ✅ **Verbosity control**: Multiple output levels (-v, -vv, -vvv) for different use cases
+- ✅ **Comprehensive health summary**: Clear overview of cluster status and issues
 - ✅ User-friendly interface
 
 ## Usage
