@@ -259,43 +259,7 @@ Use maximum verbosity for detailed troubleshooting:
 - **Local Access**: Localhost operations use direct file access (no SSH)
 - **Configuration Protection**: Config file permissions restricted to owner
 
-## 🚀 Deployment
-
-### Remote Deployment
-Use the included deployment script:
-```bash
-# Edit deploy.sh with your target server details
-vim deploy.sh
-
-# Deploy to remote server
-./deploy.sh
-```
-
-### System Service Integration
-```bash
-# Create systemd service for regular monitoring
-sudo tee /etc/systemd/system/galerahealth.service << EOF
-[Unit]
-Description=GaleraHealth Cluster Monitor
-After=network.target
-
-[Service]
-Type=oneshot
-User=galera
-ExecStart=/usr/local/bin/galerahealth -v
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Enable and start
-sudo systemctl enable galerahealth.service
-sudo systemctl start galerahealth.service
-```
-
-## 📄 License
+##  License
 
 MIT License - see LICENSE file for details.
 
