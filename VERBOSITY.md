@@ -1,21 +1,21 @@
-# GaleraHealth - Sistema de Verbositat
+# GaleraHealth - Verbosity System
 
-## Descripció General
+## Overview
 
-GaleraHealth ara inclou un sistema de verbositat amb tres nivells diferents que permet als usuaris controlar la quantitat d'informació mostrada durant l'execució.
+GaleraHealth now includes a verbosity system with three different levels that allows users to control the amount of information displayed during execution.
 
-## Nivells de Verbositat
+## Verbosity Levels
 
-### Nivell 0 - Mínim (Per defecte)
-**Ús:** `./galerahealth` (sense flags)
+### Level 0 - Minimal (Default)
+**Usage:** `./galerahealth` (no flags)
 
-**Què mostra:**
-- Només missatges essencials i resultats finals
-- Conexions exitoses
-- Títols de les seccions principals
-- Errors crítics
+**What it shows:**
+- Only essential messages and final results
+- Successful connections
+- Main section titles
+- Critical errors
 
-**Exemple de sortida:**
+**Example output:**
 ```
 === GaleraHealth - Galera Cluster Monitor ===
 ✓ Successfully connected to node 10.1.1.91
@@ -23,16 +23,16 @@ GaleraHealth ara inclou un sistema de verbositat amb tres nivells diferents que 
 🔍 Performing cluster coherence analysis...
 ```
 
-### Nivell 1 - Normal (-v)
-**Ús:** `./galerahealth -v`
+### Level 1 - Normal (-v)
+**Usage:** `./galerahealth -v`
 
-**Què mostra:**
-- Tot del nivell mínim +
-- Carrega de configuració guardada
-- Advertències i avisos
-- Confirmacions d'operacions
+**What it shows:**
+- Everything from minimal level +
+- Saved configuration loading
+- Warnings and notices
+- Operation confirmations
 
-**Exemple de sortida:**
+**Example output:**
 ```
 === GaleraHealth - Galera Cluster Monitor ===
 📋 💾 Loaded saved configuration from /home/user/.galerahealth
@@ -41,17 +41,17 @@ GaleraHealth ara inclou un sistema de verbositat amb tres nivells diferents que 
 ✓ Successfully connected to node 10.1.1.91
 ```
 
-### Nivell 2 - Verbose (-vv)
-**Ús:** `./galerahealth -vv`
+### Level 2 - Verbose (-vv)
+**Usage:** `./galerahealth -vv`
 
-**Què mostra:**
-- Tot dels nivells anteriors +
-- Detalls de les operacions internes
-- Informació de cerca de fitxers
-- Processos de connexió SSH detallats
-- Anàlisi de configuració paso a paso
+**What it shows:**
+- Everything from previous levels +
+- Internal operation details
+- File search information
+- Detailed SSH connection processes
+- Step-by-step configuration analysis
 
-**Exemple de sortida:**
+**Example output:**
 ```
 🔍 Verbosity level set to: 2
 === GaleraHealth - Galera Cluster Monitor ===
@@ -65,18 +65,18 @@ GaleraHealth ara inclou un sistema de verbositat amb tres nivells diferents que 
 🔍 📁 Configuration files found: 3 files
 ```
 
-### Nivell 3 - Debug (-vvv)
-**Ús:** `./galerahealth -vvv`
+### Level 3 - Debug (-vvv)
+**Usage:** `./galerahealth -vvv`
 
-**Què mostra:**
-- Tot dels nivells anteriors +
-- Informació completa de depuració
-- Detalls de xifrat/desxifrat de contrasenyes
-- Llistes completes de fitxers trobats
-- Configuracions internes
-- Dades en brut
+**What it shows:**
+- Everything from previous levels +
+- Complete debugging information
+- Password encryption/decryption details
+- Complete lists of found files
+- Internal configurations
+- Raw data
 
-**Exemple de sortida:**
+**Example output:**
 ```
 🐛 Verbosity level set to: 3
 === GaleraHealth - Galera Cluster Monitor ===
@@ -92,44 +92,44 @@ GaleraHealth ara inclou un sistema de verbositat amb tres nivells diferents que 
 🐛   - /etc/mysql/mysql.conf.d/mysqld.cnf
 ```
 
-## Formats de Flags Suportats
+## Supported Flag Formats
 
-El sistema suporta diferents formats per especificar el nivell de verbositat:
-
-```bash
-./galerahealth -v      # Nivell 1 (normal)
-./galerahealth -vv     # Nivell 2 (verbose)
-./galerahealth -vvv    # Nivell 3 (debug)
-```
-
-## Icones Utilitzades per Nivell
-
-- **📋** - Missatges normals (-v i superior)
-- **🔍** - Informació detallada (-vv i superior)  
-- **🐛** - Informació de depuració (-vvv només)
-
-## Compatibilitat amb Altres Flags
-
-Els flags de verbositat es poden combinar amb altres opcions:
+The system supports different formats for specifying verbosity level:
 
 ```bash
-./galerahealth -vv --clear-config    # Neteja amb verbositat detallada
-./galerahealth -v --help             # Ajuda (la verbositat no afecta l'ajuda)
+./galerahealth -v      # Level 1 (normal)
+./galerahealth -vv     # Level 2 (verbose)
+./galerahealth -vvv    # Level 3 (debug)
 ```
 
-## Quan Utilitzar Cada Nivell
+## Icons Used by Level
 
-- **Mínim (per defecte):** Ús normal diari, només vols veure els resultats
-- **Normal (-v):** Quan vols més informació sobre què està passant
-- **Verbose (-vv):** Per resolucionar problemes o entendre els processos interns
-- **Debug (-vvv):** Per desenvolupament o diagnòstic profund de problemes
+- **📋** - Normal messages (-v and higher)
+- **🔍** - Detailed information (-vv and higher)  
+- **🐛** - Debug information (-vvv only)
 
-## Implementació Tècnica
+## Compatibility with Other Flags
 
-El sistema utilitza funcions de logging centralitzades:
-- `logMinimal()` - Sempre es mostra
-- `logNormal()` - Només amb -v i superior
-- `logVerbose()` - Només amb -vv i superior
-- `logDebug()` - Només amb -vvv
+Verbosity flags can be combined with other options:
 
-Això permet un control granular de la sortida sense afectar el rendiment quan no es necessita informació detallada.
+```bash
+./galerahealth -vv --clear-config    # Clear with detailed verbosity
+./galerahealth -v --help             # Help (verbosity doesn't affect help)
+```
+
+## When to Use Each Level
+
+- **Minimal (default):** Normal daily use, only want to see results
+- **Normal (-v):** When you want more information about what's happening
+- **Verbose (-vv):** For troubleshooting or understanding internal processes
+- **Debug (-vvv):** For development or deep problem diagnosis
+
+## Technical Implementation
+
+The system uses centralized logging functions:
+- `logMinimal()` - Always shown
+- `logNormal()` - Only with -v and higher
+- `logVerbose()` - Only with -vv and higher
+- `logDebug()` - Only with -vvv
+
+This allows granular output control without affecting performance when detailed information is not needed.
