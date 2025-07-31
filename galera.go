@@ -2,10 +2,105 @@ package main
 
 import (
 	"fmt"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 )
+
+// getGaleraClusterInfoLocal retrieves Galera cluster configuration from localhost
+func getGaleraClusterInfoLocal(nodeIP string) (*GaleraClusterInfo, error) {
+	clusterInfo := &GaleraClusterInfo{
+		NodeIP: nodeIP,
+	}
+
+	logNormal("🔍 Searching for cluster information locally...")
+
+	// Search recursively for all .cnf files in /etc/mysql and also check /etc/my.cnf
+	logVerbose("📁 Searching for configuration files...")
+
+	var foundConfigs []string
+
+	// Find all .cnf files recursively in /etc/mysql
+	cmd := exec.Command("find", "/etc/mysql", "-name", "*.cnf", "-type", "f")
+	output, err := cmd.Output()
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				foundConfigs = append(foundConfigs, line)
+			}
+		}
+	}
+
+	// Also check /etc/my.cnf
+	cmd = exec.Command("test", "-f", "/etc/my.cnf")
+	if cmd.Run() == nil {
+		foundConfigs = append(foundConfigs, "/etc/my.cnf")
+	}
+
+	if len(foundConfigs) == 0 {
+		return nil, fmt.Errorf("no MySQL configuration files found in /etc/mysql or /etc/my.cnf")
+	}
+
+	logVerbose("📁 Configuration files found: %d files", len(foundConfigs))
+	for _, config := range foundConfigs {
+		logDebug("   - %s", config)
+	}
+
+	// Search in each configuration file
+	logVerbose("Analyzing %d configuration files", len(foundConfigs))
+	for _, configFile := range foundConfigs {
+		logVerbose("   Analyzing %s...", configFile)
+
+		cmd := exec.Command("cat", configFile)
+		content, err := cmd.Output()
+		if err != nil {
+			logDebug("Error reading %s: %v", configFile, err)
+			continue
+		}
+
+		contentStr := string(content)
+
+		// Look for wsrep_cluster_name
+		if clusterInfo.ClusterName == "" {
+			if name := extractConfigValue(contentStr, "wsrep_cluster_name"); name != "" {
+				clusterInfo.ClusterName = name
+				logVerbose("   ✓ wsrep_cluster_name found in %s", configFile)
+			}
+		}
+
+		// Look for wsrep_cluster_address
+		if clusterInfo.ClusterAddress == "" {
+			if address := extractConfigValue(contentStr, "wsrep_cluster_address"); address != "" {
+				clusterInfo.ClusterAddress = address
+				logVerbose("   ✓ wsrep_cluster_address found in %s", configFile)
+			}
+		}
+
+		// Look for wsrep_node_name
+		if clusterInfo.NodeName == "" {
+			if name := extractConfigValue(contentStr, "wsrep_node_name"); name != "" {
+				clusterInfo.NodeName = name
+			}
+		}
+
+		// Look for wsrep_node_address
+		if clusterInfo.NodeAddress == "" {
+			if address := extractConfigValue(contentStr, "wsrep_node_address"); address != "" {
+				clusterInfo.NodeAddress = address
+			}
+		}
+	}
+
+	// Verify we have essential information
+	if clusterInfo.ClusterName == "" && clusterInfo.ClusterAddress == "" {
+		return nil, fmt.Errorf("no Galera configuration found in any configuration file")
+	}
+
+	return clusterInfo, nil
+}
 
 // getGaleraClusterInfo retrieves Galera cluster configuration from a node
 func getGaleraClusterInfo(sshClient *SSHClient, nodeIP string) (*GaleraClusterInfo, error) {

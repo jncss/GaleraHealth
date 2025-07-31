@@ -103,7 +103,98 @@ func createSSHConnectionWithInfo(host string, connInfo *SSHConnectionInfo) (*SSH
 		return client, err
 	}
 
-	return nil, fmt.Errorf("no authentication method available")
+		return nil, fmt.Errorf("no SSH connection method available")
+}
+
+// createSSHConnectionWithNodeCredentials creates SSH connection using node-specific credentials
+func createSSHConnectionWithNodeCredentials(host string, config *Config) (*SSHClient, *SSHConnectionInfo, error) {
+	creds := config.getNodeCredentials(host)
+	
+	if creds != nil {
+		// We have saved credentials for this node
+		logVerbose("      🔍 Found saved credentials for node %s", host)
+		
+		if creds.UsesSSHKeys {
+			// Try SSH keys first
+			logVerbose("      🔑 Trying SSH keys for %s...", host)
+			client, err := createSSHConnectionWithKeys(host, creds.SSHUsername)
+			if err == nil {
+				logVerbose("      ✓ Connected to %s using SSH keys", host)
+				return client, &SSHConnectionInfo{
+					Username:    creds.SSHUsername,
+					Password:    "",
+					HasPassword: false,
+					UsedKeys:    true,
+				}, nil
+			}
+			logVerbose("      ⚠️  SSH keys failed for %s: %v", host, err)
+		}
+		
+		if creds.HasSSHPassword {
+			// Try saved password
+			logVerbose("      🔐 Trying saved password for %s...", host)
+			password, err := config.getNodeSSHPassword(host)
+			if err != nil {
+				logVerbose("      ❌ Failed to decrypt password for %s: %v", host, err)
+			} else {
+				client, err := createSSHConnectionWithPassword(host, creds.SSHUsername, password)
+				if err == nil {
+					logVerbose("      ✓ Connected to %s using saved password", host)
+					return client, &SSHConnectionInfo{
+						Username:    creds.SSHUsername,
+						Password:    password,
+						HasPassword: true,
+						UsedKeys:    false,
+					}, nil
+				}
+				logVerbose("      ⚠️  Saved password failed for %s: %v", host, err)
+			}
+		}
+		
+		// Use saved username but need new password
+		logNormal("Saved credentials for %s failed, requesting new password...", host)
+		return createSSHConnectionWithFallbackAndUsername(host, creds.SSHUsername)
+	}
+	
+	// No saved credentials, use fallback
+	logVerbose("      🆕 No saved credentials for %s, using fallback authentication", host)
+	return createSSHConnectionWithFallbackAndUsername(host, "root")
+}
+
+// createSSHConnectionWithFallbackAndUsername creates SSH connection with specific username
+func createSSHConnectionWithFallbackAndUsername(host, username string) (*SSHClient, *SSHConnectionInfo, error) {
+	connInfo := &SSHConnectionInfo{
+		Username:    username,
+		HasPassword: false,
+		UsedKeys:    false,
+	}
+
+	// First attempt: connection without password (SSH keys)
+	logVerbose("🔑 Attempting SSH connection without password to node %s as %s", host, username)
+
+	sshClient, err := createSSHConnectionWithKeys(host, username)
+	if err == nil {
+		logNormal("✓ SSH connection successful using keys!")
+		connInfo.UsedKeys = true
+		return sshClient, connInfo, nil
+	}
+
+	logNormal("⚠️  Connection with keys failed: %v", err)
+	logNormal("🔐 Attempting connection with password...")
+
+	// Second attempt: ask for password
+	fmt.Printf("Enter SSH password for %s@%s: ", username, host)
+	password, err := term.ReadPassword(int(syscall.Stdin))
+	if err != nil {
+		return nil, nil, fmt.Errorf("error reading password: %v", err)
+	}
+	fmt.Println() // new line after password
+
+	connInfo.Password = string(password)
+	connInfo.HasPassword = true
+
+	client, err := createSSHConnectionWithPassword(host, username, string(password))
+	return client, connInfo, err
 }
 
 // createSSHConnectionWithKeys creates SSH connection using SSH keys

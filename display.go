@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 )
 
 // displayClusterInfo displays information about a single cluster node
@@ -65,6 +66,23 @@ func displayClusterAnalysis(analysis *ClusterAnalysis) {
 		fmt.Printf("   Found %d configuration errors:\n", len(analysis.ConfigErrors))
 		for i, error := range analysis.ConfigErrors {
 			fmt.Printf("   %d. %s\n", i+1, error)
+		}
+
+		// Check if all errors are localhost-related SSH issues
+		localhostErrors := 0
+		for _, error := range analysis.ConfigErrors {
+			if strings.Contains(error, "initial connection was localhost") {
+				localhostErrors++
+			}
+		}
+
+		if localhostErrors > 0 && localhostErrors == len(analysis.ConfigErrors) {
+			fmt.Println()
+			fmt.Println("💡 TIP: To analyze all cluster nodes, run GaleraHealth with SSH access:")
+			fmt.Printf("   galerahealth  # Enter a remote node IP instead of localhost\n")
+			if len(analysis.ClusterNodes) > 1 {
+				fmt.Printf("   # Example: Enter %s when prompted for node IP\n", analysis.ClusterNodes[1])
+			}
 		}
 	}
 }

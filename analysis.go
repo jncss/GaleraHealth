@@ -6,7 +6,7 @@ import (
 )
 
 // performClusterAnalysis analyzes cluster coherence across all nodes
-func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnectionInfo) (*ClusterAnalysis, error) {
+func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnectionInfo, config *Config) (*ClusterAnalysis, error) {
 	analysis := &ClusterAnalysis{
 		InitialNode:  initialNode,
 		AllNodes:     []*GaleraClusterInfo{initialNode},
@@ -38,18 +38,63 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 
 	fmt.Printf("📋 Found %d nodes in cluster configuration\n", len(analysis.ClusterNodes))
 
+	// If initial connection was localhost, try to identify which cluster node represents localhost
+	var localhostNodeIP string
+	if isLocalhost(initialNode.NodeIP) && initialNode.NodeAddress != "" && !isLocalhost(initialNode.NodeAddress) {
+		// The node address from config shows the real IP of this localhost
+		localhostNodeIP = initialNode.NodeAddress
+		logVerbose("🏠 Identified localhost as %s (from wsrep_node_address)", localhostNodeIP)
+	}
+
 	// Check each node in the cluster
 	for i, nodeIP := range analysis.ClusterNodes {
-		if nodeIP == initialNode.NodeIP {
-			// Skip initial node, already analyzed
-			fmt.Printf("   %d. %s (initial node - already analyzed)\n", i+1, nodeIP)
+		if nodeIP == initialNode.NodeIP || isLocalhost(nodeIP) || nodeIP == localhostNodeIP {
+			// Skip initial node (already analyzed), localhost references, or identified localhost IP
+			if nodeIP == initialNode.NodeIP {
+				fmt.Printf("   %d. %s (initial node - already analyzed)\n", i+1, nodeIP)
+			} else if isLocalhost(nodeIP) {
+				fmt.Printf("   %d. %s (localhost - skipping SSH)\n", i+1, nodeIP)
+			} else if nodeIP == localhostNodeIP {
+				fmt.Printf("   %d. %s (this is localhost %s - already analyzed)\n", i+1, nodeIP, initialNode.NodeIP)
+			}
 			continue
 		}
 
 		fmt.Printf("   %d. %s - connecting...\n", i+1, nodeIP)
 
-		// Connect to the node using saved connection info
-		sshClient, err := createSSHConnectionWithInfo(nodeIP, connInfo)
+		// Check if we have valid SSH connection info
+		var sshClient *SSHClient
+		var err error
+
+		if connInfo.Username == "local" {
+			// Initial connection was localhost, cannot connect to remote nodes without SSH credentials
+			analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Cannot connect to remote node %s: initial connection was localhost (no SSH credentials available)", nodeIP))
+			analysis.IsCoherent = false
+			fmt.Printf("      ⚠️  Skipped: initial connection was localhost, no SSH credentials for remote nodes\n")
+			continue
+		} else {
+			// Use per-node credentials for connection
+			sshClient, newConnInfo, err := createSSHConnectionWithNodeCredentials(nodeIP, config)
+			if err != nil {
+				analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Failed to connect to node %s: %v", nodeIP, err))
+				analysis.IsCoherent = false
+				fmt.Printf("      ❌ Connection failed: %v\n", err)
+				continue
+			}
+			sshClient.Close() // We'll reopen it when needed
+			
+			// Save the new connection info for this node if we got new credentials
+			if newConnInfo != nil {
+				err = config.setNodeCredentials(nodeIP, newConnInfo.Username, "", "", "", newConnInfo.UsedKeys)
+				if err != nil {
+					fmt.Printf("      ⚠️  Warning: Could not save credentials for node %s: %v\n", nodeIP, err)
+				}
+			}
+			
+			// Now create connection using saved info
+			sshClient, _, err = createSSHConnectionWithNodeCredentials(nodeIP, config)
+		}
+
 		if err != nil {
 			analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Failed to connect to node %s: %v", nodeIP, err))
 			analysis.IsCoherent = false
@@ -114,12 +159,12 @@ func (a *ClusterAnalysis) analyzeCoherence() {
 }
 
 // checkMySQLStatusOnAllNodes checks MySQL/MariaDB status on all nodes in the analysis
-func checkMySQLStatusOnAllNodes(analysis *ClusterAnalysis, connInfo *SSHConnectionInfo, mysqlCreds *MySQLConnectionInfo) error {
+func checkMySQLStatusOnAllNodes(analysis *ClusterAnalysis, connInfo *SSHConnectionInfo, mysqlCreds *MySQLConnectionInfo, config *Config) error {
 	for i, node := range analysis.AllNodes {
 		fmt.Printf("   %d. %s - checking MySQL status...\n", i+1, node.NodeIP)
 
-		// Connect to the node
-		sshClient, err := createSSHConnectionWithInfo(node.NodeIP, connInfo)
+		// Connect to the node using per-node credentials
+		sshClient, _, err := createSSHConnectionWithNodeCredentials(node.NodeIP, config)
 		if err != nil {
 			node.StatusError = fmt.Sprintf("SSH connection failed: %v", err)
 			fmt.Printf("      ❌ SSH connection failed: %v\n", err)

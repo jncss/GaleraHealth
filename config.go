@@ -15,15 +15,28 @@ import (
 	"strings"
 )
 
+// NodeCredentials holds SSH and MySQL credentials for a specific node
+type NodeCredentials struct {
+	NodeIP                 string `json:"node_ip"`
+	SSHUsername            string `json:"ssh_username"`
+	MySQLUsername          string `json:"mysql_username"`
+	EncryptedSSHPassword   string `json:"encrypted_ssh_password,omitempty"`
+	EncryptedMySQLPassword string `json:"encrypted_mysql_password,omitempty"`
+	HasSSHPassword         bool   `json:"has_ssh_password"`
+	HasMySQLPassword       bool   `json:"has_mysql_password"`
+	UsesSSHKeys            bool   `json:"uses_ssh_keys"`
+}
+
 // Config represents the application configuration
 type Config struct {
-	LastNodeIP             string `json:"last_node_ip"`
-	LastSSHUsername        string `json:"last_ssh_username"`
-	LastMySQLUsername      string `json:"last_mysql_username"`
-	LastCheckCoherence     bool   `json:"last_check_coherence"`
-	LastCheckMySQL         bool   `json:"last_check_mysql"`
-	EncryptedMySQLPassword string `json:"encrypted_mysql_password,omitempty"`
-	HasSavedPassword       bool   `json:"has_saved_password"`
+	LastNodeIP             string            `json:"last_node_ip"`
+	LastSSHUsername        string            `json:"last_ssh_username"`
+	LastMySQLUsername      string            `json:"last_mysql_username"`
+	LastCheckCoherence     bool              `json:"last_check_coherence"`
+	LastCheckMySQL         bool              `json:"last_check_mysql"`
+	EncryptedMySQLPassword string            `json:"encrypted_mysql_password,omitempty"` // Deprecated, kept for backward compatibility
+	HasSavedPassword       bool              `json:"has_saved_password"`                 // Deprecated, kept for backward compatibility
+	NodeCredentials        []NodeCredentials `json:"node_credentials"`                   // New: per-node credentials
 }
 
 // getConfigPath returns the path to the configuration file
@@ -199,4 +212,79 @@ func promptForBoolWithDefault(message string, defaultValue bool) bool {
 
 	response := promptForInputWithDefault(fmt.Sprintf("%s (y/N)", message), defaultStr)
 	return strings.ToLower(strings.TrimSpace(response)) == "y"
+}
+
+// getNodeCredentials retrieves credentials for a specific node
+func (c *Config) getNodeCredentials(nodeIP string) *NodeCredentials {
+	for i := range c.NodeCredentials {
+		if c.NodeCredentials[i].NodeIP == nodeIP {
+			return &c.NodeCredentials[i]
+		}
+	}
+	return nil
+}
+
+// setNodeCredentials saves or updates credentials for a specific node
+func (c *Config) setNodeCredentials(nodeIP string, sshUsername, mysqlUsername, sshPassword, mysqlPassword string, usesSSHKeys bool) error {
+	// Find existing credentials or create new ones
+	var creds *NodeCredentials
+	for i := range c.NodeCredentials {
+		if c.NodeCredentials[i].NodeIP == nodeIP {
+			creds = &c.NodeCredentials[i]
+			break
+		}
+	}
+	
+	if creds == nil {
+		// Create new credentials entry
+		c.NodeCredentials = append(c.NodeCredentials, NodeCredentials{NodeIP: nodeIP})
+		creds = &c.NodeCredentials[len(c.NodeCredentials)-1]
+	}
+	
+	// Update credentials
+	creds.SSHUsername = sshUsername
+	creds.MySQLUsername = mysqlUsername
+	creds.UsesSSHKeys = usesSSHKeys
+	
+	// Encrypt and store SSH password if provided
+	if sshPassword != "" {
+		encryptedSSH, err := encryptPassword(sshPassword, nodeIP)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt SSH password: %v", err)
+		}
+		creds.EncryptedSSHPassword = encryptedSSH
+		creds.HasSSHPassword = true
+	}
+	
+	// Encrypt and store MySQL password if provided
+	if mysqlPassword != "" {
+		encryptedMySQL, err := encryptPassword(mysqlPassword, nodeIP)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt MySQL password: %v", err)
+		}
+		creds.EncryptedMySQLPassword = encryptedMySQL
+		creds.HasMySQLPassword = true
+	}
+	
+	return nil
+}
+
+// getNodeSSHPassword retrieves and decrypts SSH password for a specific node
+func (c *Config) getNodeSSHPassword(nodeIP string) (string, error) {
+	creds := c.getNodeCredentials(nodeIP)
+	if creds == nil || !creds.HasSSHPassword {
+		return "", nil
+	}
+	
+	return decryptPassword(creds.EncryptedSSHPassword, nodeIP)
+}
+
+// getNodeMySQLPassword retrieves and decrypts MySQL password for a specific node
+func (c *Config) getNodeMySQLPassword(nodeIP string) (string, error) {
+	creds := c.getNodeCredentials(nodeIP)
+	if creds == nil || !creds.HasMySQLPassword {
+		return "", nil
+	}
+	
+	return decryptPassword(creds.EncryptedMySQLPassword, nodeIP)
 }

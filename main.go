@@ -127,35 +127,72 @@ func main() {
 		log.Fatal("Node IP is required")
 	}
 
-	// Ask for SSH username with default
-	defaultUsername := config.LastSSHUsername
-	if defaultUsername == "" {
-		defaultUsername = "root"
-	}
-	username := promptForInputWithDefault("Enter SSH username", defaultUsername)
-	if username == "" {
-		username = "root" // fallback default
-	}
+	// Ask for SSH username with default (only if not localhost)
+	var username string
+	var sshClient *SSHClient
+	var connInfo *SSHConnectionInfo
+	var err error
 
-	logVerbose("Attempting SSH connection to %s@%s", username, nodeIP)
-	// Try SSH connection (first without password, then with password if needed)
-	sshClient, connInfo, err := createSSHConnectionWithFallbackAndInfo(nodeIP, username)
-	if err != nil {
-		log.Fatal("Error connecting via SSH:", err)
-	}
-	defer sshClient.Close()
+	isLocal := isLocalhost(nodeIP)
 
-	logMinimal("✓ Successfully connected to node %s", nodeIP)
+	if isLocal {
+		logMinimal("🏠 Local connection detected - skipping SSH authentication")
+		username = "local"
+		// Create a dummy connection info for localhost
+		connInfo = &SSHConnectionInfo{
+			Username:    "local",
+			Password:    "",
+			HasPassword: false,
+			UsedKeys:    false,
+		}
+	} else {
+		defaultUsername := config.LastSSHUsername
+		if defaultUsername == "" {
+			defaultUsername = "root"
+		}
+		username = promptForInputWithDefault("Enter SSH username", defaultUsername)
+		if username == "" {
+			username = "root" // fallback default
+		}
+
+		logVerbose("Attempting SSH connection to %s@%s", username, nodeIP)
+		// Try SSH connection using per-node credentials
+		sshClient, connInfo, err = createSSHConnectionWithNodeCredentials(nodeIP, config)
+		if err != nil {
+			log.Fatal("Error connecting via SSH:", err)
+		}
+		defer sshClient.Close()
+
+		// Save the connection info for this node
+		if connInfo != nil {
+			err = config.setNodeCredentials(nodeIP, connInfo.Username, "", "", "", connInfo.UsedKeys)
+			if err != nil {
+				logVerbose("Warning: Could not save node credentials: %v", err)
+			}
+		}
+
+		logMinimal("✓ Successfully connected to node %s", nodeIP)
+	}
 
 	logVerbose("Gathering cluster information from initial node")
 	// Get cluster information from initial node
-	initialClusterInfo, err := getGaleraClusterInfo(sshClient, nodeIP)
+	var initialClusterInfo *GaleraClusterInfo
+
+	if isLocal {
+		logMinimal("🔍 Analyzing local Galera configuration...")
+		initialClusterInfo, err = getGaleraClusterInfoLocal(nodeIP)
+	} else {
+		initialClusterInfo, err = getGaleraClusterInfo(sshClient, nodeIP)
+	}
+
 	if err != nil {
 		log.Fatal("Error obtaining cluster information:", err)
 	}
 
-	// Close initial connection
-	sshClient.Close()
+	// Close SSH connection if it was used
+	if sshClient != nil {
+		sshClient.Close()
+	}
 
 	// Display initial node information
 	displayClusterInfo(initialClusterInfo)
@@ -175,7 +212,7 @@ func main() {
 		logMinimal("")
 		logMinimal("🔍 Performing cluster coherence analysis...")
 
-		analysis, err := performClusterAnalysis(initialClusterInfo, connInfo)
+		analysis, err := performClusterAnalysis(initialClusterInfo, connInfo, config)
 		if err != nil {
 			log.Fatal("Error performing cluster analysis:", err)
 		}
@@ -198,7 +235,7 @@ func main() {
 			logMinimal("")
 			logMinimal("🔍 Checking MySQL/MariaDB status on all nodes...")
 
-			err := checkMySQLStatusOnAllNodes(analysis, connInfo, mysqlCreds)
+			err := checkMySQLStatusOnAllNodes(analysis, connInfo, mysqlCreds, config)
 			if err != nil {
 				log.Printf("Error checking MySQL status: %v", err)
 			}
