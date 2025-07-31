@@ -165,9 +165,18 @@ func main() {
 
 		// Save the connection info for this node
 		if connInfo != nil {
-			err = config.setNodeCredentials(nodeIP, connInfo.Username, "", "", "", connInfo.UsedKeys)
+			sshPassword := ""
+			if connInfo.HasPassword {
+				sshPassword = connInfo.Password
+			}
+			err = config.setNodeCredentials(nodeIP, connInfo.Username, "", sshPassword, "", connInfo.UsedKeys)
 			if err != nil {
 				logVerbose("Warning: Could not save node credentials: %v", err)
+			} else {
+				if connInfo.HasPassword {
+					logVerbose("✓ SSH password saved for node %s", nodeIP)
+				}
+				logVerbose("✓ SSH credentials saved for node %s", nodeIP)
 			}
 		}
 

@@ -85,9 +85,18 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 
 			// Save the new connection info for this node if we got new credentials
 			if newConnInfo != nil {
-				err = config.setNodeCredentials(nodeIP, newConnInfo.Username, "", "", "", newConnInfo.UsedKeys)
+				sshPassword := ""
+				if newConnInfo.HasPassword {
+					sshPassword = newConnInfo.Password
+				}
+				err = config.setNodeCredentials(nodeIP, newConnInfo.Username, "", sshPassword, "", newConnInfo.UsedKeys)
 				if err != nil {
 					fmt.Printf("      ⚠️  Warning: Could not save credentials for node %s: %v\n", nodeIP, err)
+				} else {
+					if newConnInfo.HasPassword {
+						fmt.Printf("      ✓ SSH password saved for node %s\n", nodeIP)
+					}
+					fmt.Printf("      ✓ SSH credentials saved for node %s\n", nodeIP)
 				}
 			}
 		}
