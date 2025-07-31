@@ -1,213 +1,314 @@
-# GaleraHealth
+# GaleraHealth - Galera Cluster Monitor
 
-A Go application for monitoring the status of a Galera MySQL/MariaDB cluster.
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Go](https://img.shields.io/badge/go-1.23+-green)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-## Description
+**GaleraHealth** is a comprehensive monitoring tool for MariaDB/MySQL Galera clusters that provides detailed cluster analysis, configuration coherence checking, and MySQL status monitoring across all cluster nodes.
 
-GaleraHealth is a tool that allows you to connect to a node in a Galera cluster via SSH to obtain information about the cluster configuration, specifically:
+## ✨ Features
 
-- `wsrep_cluster_name`: The cluster name
-- `wsrep_cluster_address`: The cluster nodes address
-- `wsrep_node_name`: The individual node name
-- `wsrep_node_address`: The individual node address
+- 🔍 **Comprehensive Cluster Analysis**: Automatically discovers and analyzes all nodes in your Galera cluster
+- 🔐 **Smart SSH Authentication**: Supports both SSH keys and password authentication with intelligent fallback
+- 🏠 **Localhost Optimization**: Automatically detects and optimizes performance when running on cluster nodes
+- 📊 **Configuration Coherence**: Validates that cluster configuration is consistent across all nodes
+- 🔗 **MySQL Status Monitoring**: Checks MySQL/MariaDB service status and cluster connectivity
+- 💾 **Persistent Configuration**: Saves connection settings with encrypted password storage
+- 📈 **Multi-level Verbosity**: Four verbosity levels for different monitoring needs
+- 🎯 **Health Summary**: Provides clear cluster health status and actionable recommendations
+- 🌐 **Per-node Credentials**: Supports different SSH/MySQL credentials for each cluster node
 
-Additionally, it can perform a **cluster coherence analysis** by connecting to all nodes in the cluster and verifying that their configurations are consistent.
+## 🚀 Quick Start
 
-## Features
+### Installation
 
-- ✅ Smart SSH authentication:
-  - First attempt with SSH keys (id_rsa, id_ecdsa, id_ed25519)
-  - Second attempt with password if keys fail
-  - **Password reuse**: Automatically reuses entered password for subsequent nodes
-  - **Per-node credentials**: Supports different SSH/MySQL credentials for each cluster node
-- ✅ Automatic search in multiple configuration file locations
-- ✅ Runtime MySQL variables verification
-- ✅ Cluster nodes parsing
-- ✅ **Cluster coherence analysis**:
-  - Connects to all nodes in the cluster
-  - Verifies configuration consistency across nodes
-  - Checks `wsrep_cluster_name`, `wsrep_cluster_address`, `wsrep_node_name`, `wsrep_node_address`
-  - Provides detailed analysis and recommendations
-  - **Mixed authentication support**: Different nodes can use different authentication methods
-- ✅ **Persistent configuration with encryption**:
-  - Saves connection preferences and credentials securely
-  - AES-GCM encryption for sensitive data
-  - Per-node credential storage for mixed environments
-- ✅ **Localhost optimization**: Direct file access when running on cluster nodes
-- ✅ **Verbosity control**: Multiple output levels (-v, -vv, -vvv) for different use cases
-- ✅ **Comprehensive health summary**: Clear overview of cluster status and issues
-- ✅ User-friendly interface
+1. **Download or build the binary**:
+   ```bash
+   # Option 1: Build from source
+   go build -o galerahealth .
+   
+   # Option 2: Use deployment script
+   ./deploy.sh
+   ```
 
-## Usage
+2. **Make it executable**:
+   ```bash
+   chmod +x galerahealth
+   ```
 
-1. Compile the application:
+3. **Run the monitor**:
+   ```bash
+   ./galerahealth
+   ```
+
+### Basic Usage
+
 ```bash
-go build -o galerahealth
-```
-   Or use the build script:
-```bash
-./make.sh
-```
-
-2. Run the application:
-```bash
+# Interactive mode (recommended for first use)
 ./galerahealth
+
+# With verbosity
+./galerahealth -v      # Normal verbosity
+./galerahealth -vv     # Detailed verbosity
+./galerahealth -vvv    # Debug verbosity
+
+# Configuration management
+./galerahealth --clear-config    # Clear saved settings
+./galerahealth --help           # Show help
 ```
-   Or compile and run in one step:
+
+## 📋 Usage Examples
+
+### Example 1: First Time Setup
 ```bash
-./run.sh
-```
-
-3. Follow the instructions:
-   - Enter the cluster node IP
-   - Enter SSH username (default: root - just press Enter to use it)
-   - The application will try to connect with SSH keys first
-   - If keys fail, it will ask for the SSH password
-   - Choose whether to perform cluster coherence analysis (connects to all nodes)
-
-## Supported configuration files
-
-The application searches for the `wsrep_cluster_name`, `wsrep_cluster_address`, `wsrep_node_name`, and `wsrep_node_address` variables by:
-
-- **Recursively scanning** all `*.cnf` files in `/etc/mysql/`
-- **Checking** `/etc/my.cnf` if it exists
-
-This approach ensures that all MySQL/MariaDB configuration files are analyzed, regardless of their specific location within the `/etc/mysql` directory structure.
-
-It also attempts to get the information from MySQL runtime variables if accessible.
-
-## Example output
-
-```
+$ ./galerahealth
 === GaleraHealth - Galera Cluster Monitor ===
 
-Enter the Galera cluster node IP: 192.168.1.100
+Enter the Galera cluster node IP (default: localhost): 10.1.1.91
 Enter SSH username (default: root): 
-🔑 Attempting SSH connection without password to node 192.168.1.100...
-✓ SSH connection successful using keys!
+🔐 SSH Key Authentication: Attempting connection...
+✅ Connected successfully using SSH keys
 
-🔍 Searching for cluster information...
-📁 Searching for configuration files...
-📁 Configuration files found: 4 files
-   - /etc/mysql/my.cnf
-   - /etc/mysql/conf.d/galera.cnf
-   - /etc/mysql/mariadb.conf.d/50-server.cnf
-   - /etc/mysql/mysql.conf.d/mysqld.cnf
-   Analyzing /etc/mysql/my.cnf...
-   ✓ wsrep_cluster_name found in /etc/mysql/my.cnf
-   ✓ wsrep_cluster_address found in /etc/mysql/my.cnf
-
+🔍 Analyzing Galera configuration...
 === GALERA CLUSTER INFORMATION ===
+🏷️  Cluster Name: production_cluster
+📍 Cluster Address: gcomm://10.1.1.91,10.1.1.92,10.1.1.93
+🔖 Node Name: node1
+🌐 Node Address: 10.1.1.91
 
-🖥️  Node analyzed: 192.168.1.100
+Do you want to check cluster configuration coherence across all nodes? (Y/n): y
+✅ All nodes have coherent configuration
 
-📛 Cluster name (wsrep_cluster_name): my_galera_cluster
-🌐 Cluster address (wsrep_cluster_address): gcomm://192.168.1.100,192.168.1.101,192.168.1.102
-📍 Cluster nodes detected: 3
-   1. 192.168.1.100
-   2. 192.168.1.101
-   3. 192.168.1.102
-🏷️  Node name (wsrep_node_name): node1
-🌍 Node address (wsrep_node_address): 192.168.1.100
+Do you want to check MySQL/MariaDB cluster status on all nodes? (y/N): y
+✅ All MySQL services are healthy
 
-✅ Cluster information obtained successfully!
-
-Do you want to check cluster configuration coherence across all nodes? (y/N): y
-
-🔍 Performing cluster coherence analysis...
-📋 Found 3 nodes in cluster configuration
-   1. 192.168.1.100 (initial node - already analyzed)
-   2. 192.168.1.101 - connecting...
-      🔐 Using saved password...
-      ✓ Connected using saved password
-      ✓ Configuration retrieved
-   3. 192.168.1.102 - connecting...
-      🔐 Using saved password...
-      ✓ Connected using saved password
-      ✓ Configuration retrieved
-
-=== CLUSTER COHERENCE ANALYSIS ===
-
-📊 Nodes analyzed: 3/3
-🎯 Cluster name: my_galera_cluster
-
-📋 Node Details:
-   1. 192.168.1.100
-      Cluster Name: my_galera_cluster
-      Cluster Address: gcomm://192.168.1.100,192.168.1.101,192.168.1.102
-      Node Name: node1
-      Node Address: 192.168.1.100
-
-   2. 192.168.1.101
-      Cluster Name: my_galera_cluster
-      Cluster Address: gcomm://192.168.1.100,192.168.1.101,192.168.1.102
-      Node Name: node2
-      Node Address: 192.168.1.101
-
-   3. 192.168.1.102
-      Cluster Name: my_galera_cluster
-      Cluster Address: gcomm://192.168.1.100,192.168.1.101,192.168.1.102
-      Node Name: node3
-      Node Address: 192.168.1.102
-
-✅ CLUSTER CONFIGURATION IS COHERENT
-   All nodes have consistent configuration
-
-💡 Recommendations:
-   - Configuration looks good!
-   - Monitor cluster status regularly
+=== CLUSTER HEALTH SUMMARY ===
+✅ CLUSTER IS HEALTHY
+📊 STATUS SUMMARY:
+   🏠 Total nodes: 3
+   ⚙️  Configuration coherent: ✅
+   🔗 MySQL/MariaDB: ✅ All nodes responding
 ```
 
-## Requirements
+### Example 2: Localhost Monitoring
+```bash
+$ ./galerahealth
+Enter the Galera cluster node IP (default: localhost): localhost
+🏠 Local connection detected - skipping SSH authentication
+🔍 Analyzing local Galera configuration...
 
-- Go 1.21 or higher
-- SSH access to the Galera cluster node
-- The node must have MySQL/MariaDB with Galera configured
+# Automatically uses local file access and command execution
+# No SSH overhead for optimal performance
+```
 
-## Dependencies
+### Example 3: Troubleshooting with Verbosity
+```bash
+$ ./galerahealth -vv
+=== GaleraHealth - Galera Cluster Monitor ===
+📋 💾 Loaded saved configuration from ~/.galerahealth
+Enter the Galera cluster node IP (default: 10.1.1.91): 
 
-- `golang.org/x/crypto/ssh`: For SSH connection
-- `golang.org/x/term`: For secure password reading
+📋 🔐 SSH Key Authentication: Attempting connection...
+📋 📁 Searching for configuration files...
+📋    - /etc/mysql/mariadb.conf.d/60-galera.cnf
+📋    - /etc/mysql/my.cnf
+📋 🔍 Analyzing /etc/mysql/mariadb.conf.d/60-galera.cnf...
+📋 ✅ Found wsrep_cluster_name: production_cluster
+📋 ✅ Found wsrep_cluster_address: gcomm://10.1.1.91,10.1.1.92,10.1.1.93
+```
 
-## Build Scripts
+### Example 4: Per-node Credentials
+```bash
+$ ./galerahealth
+# First node uses default credentials
+Enter the Galera cluster node IP: 10.1.1.91
+Enter SSH username: root
 
-The project includes two convenient scripts:
+# System discovers additional nodes and prompts for their credentials
+🔍 Found additional cluster nodes: 10.1.1.92, 10.1.1.93
 
-- **`make.sh`**: Only compiles the project
-  ```bash
-  ./make.sh
-  ```
+Configure credentials for node 10.1.1.92:
+  SSH Username (default: root): dbadmin
+  🔐 Enter SSH password for dbadmin@10.1.1.92: [encrypted storage]
+  
+Configure credentials for node 10.1.1.93:
+  SSH Username (default: root): ubuntu
+  🔐 Enter SSH password for ubuntu@10.1.1.93: [encrypted storage]
+```
 
-- **`run.sh`**: Compiles and runs the application
-  ```bash
-  ./run.sh
-  ```
+## ⚙️ Configuration
 
-## SSH Authentication
+### Configuration File
+GaleraHealth stores configuration in `~/.galerahealth` (JSON format with encrypted passwords):
 
-The application attempts to connect in this order:
+```json
+{
+  "node_credentials": [
+    {
+      "node_ip": "10.1.1.91",
+      "ssh_username": "root",
+      "encrypted_ssh_password": "...",
+      "mysql_username": "root",
+      "encrypted_mysql_password": "..."
+    }
+  ],
+  "check_mysql_status": true,
+  "check_cluster_coherence": true
+}
+```
 
-1. **SSH Keys**: Automatically searches for keys in:
-   - `~/.ssh/id_rsa`
-   - `~/.ssh/id_ecdsa`
-   - `~/.ssh/id_ed25519`
+### Environment Variables
+- `GALERAHEALTH_CONFIG`: Custom configuration file path
+- `GALERAHEALTH_LOG_LEVEL`: Default verbosity level (0-3)
 
-2. **Password**: If keys fail, asks for password
+## 🔧 Advanced Features
 
-## Security Notes
+### Verbosity Levels
 
-⚠️ **IMPORTANT**: This application uses `ssh.InsecureIgnoreHostKey()` for simplicity. In a production environment, proper SSH host key verification should be implemented.
+| Level | Flag | Description | Use Case |
+|-------|------|-------------|----------|
+| **Silent** | (none) | Minimal output | Production monitoring |
+| **Normal** | `-v` | Standard operations | Daily monitoring |
+| **Verbose** | `-vv` | Detailed operations | Troubleshooting |
+| **Debug** | `-vvv` | Full debug output | Development/Support |
 
-## Future Development
+### Cluster Health Status
 
-Possible improvements:
+GaleraHealth provides comprehensive health assessment:
 
-- [x] Support for SSH key authentication
-- [x] Cluster coherence analysis across all nodes
-- [ ] Secure host key verification
-- [ ] Real-time cluster status monitoring (node states, sync status)
-- [ ] Performance metrics collection
-- [ ] Mode batch for multiple clusters
-- [ ] Export results in JSON/XML format
-- [ ] Configuration file support
-- [ ] Web dashboard interface
+- ✅ **HEALTHY**: All nodes responsive, configuration coherent
+- ⚠️ **WARNING**: Minor issues detected, cluster functional
+- ❌ **CRITICAL**: Major issues requiring immediate attention
+
+### SSH Authentication Methods
+
+1. **SSH Keys** (preferred): Automatic key-based authentication
+2. **Password Authentication**: Fallback with encrypted storage
+3. **Mixed Credentials**: Different authentication per node
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+**SSH Connection Failures**
+```bash
+❌ SSH connection failed: authentication failed
+```
+*Solution*: Verify SSH credentials, check SSH service status, ensure network connectivity
+
+**MySQL Connection Issues**
+```bash
+❌ MySQL connection failed: access denied
+```  
+*Solution*: Verify MySQL credentials, check MySQL service status, validate user permissions
+
+**Configuration Incoherence**
+```bash
+❌ CLUSTER CONFIGURATION ISSUES DETECTED
+   Found 2 configuration errors:
+   1. Node 10.1.1.92: Different cluster name 'old_cluster'
+   2. Node 10.1.1.93: Missing wsrep_node_address
+```
+*Solution*: Review and synchronize configuration files across all nodes
+
+### Debug Mode
+Use maximum verbosity for detailed troubleshooting:
+```bash
+./galerahealth -vvv 2>&1 | tee galerahealth-debug.log
+```
+
+## 📊 Output Formats
+
+### Summary Format
+```
+=== CLUSTER HEALTH SUMMARY ===
+✅ CLUSTER IS HEALTHY
+
+📊 STATUS SUMMARY:
+   🏠 Total nodes: 3
+   ⚙️  Configuration coherent: ✅
+   🔗 MySQL/MariaDB: ✅ All nodes responding
+
+🎯 RECOMMENDATIONS:
+   • All systems operating normally
+   • Regular monitoring recommended
+```
+
+### Detailed Analysis
+```
+=== CLUSTER ANALYSIS RESULTS ===
+📊 Nodes analyzed: 3/3
+🎯 Cluster name: production_cluster
+
+📋 All nodes in cluster:
+   1. 10.1.1.91 (localhost)
+      ✅ Cluster Name: production_cluster
+      ✅ Node Name: node1
+      ✅ MySQL Status: Active, Cluster Size: 3
+      
+   2. 10.1.1.92
+      ✅ Cluster Name: production_cluster  
+      ✅ Node Name: node2
+      ✅ MySQL Status: Active, Cluster Size: 3
+```
+
+## 🔒 Security Considerations
+
+- **Password Encryption**: All stored passwords use AES-GCM encryption
+- **SSH Keys**: Preferred authentication method for security
+- **Local Access**: Localhost operations use direct file access (no SSH)
+- **Configuration Protection**: Config file permissions restricted to owner
+
+## 🚀 Deployment
+
+### Remote Deployment
+Use the included deployment script:
+```bash
+# Edit deploy.sh with your target server details
+vim deploy.sh
+
+# Deploy to remote server
+./deploy.sh
+```
+
+### System Service Integration
+```bash
+# Create systemd service for regular monitoring
+sudo tee /etc/systemd/system/galerahealth.service << EOF
+[Unit]
+Description=GaleraHealth Cluster Monitor
+After=network.target
+
+[Service]
+Type=oneshot
+User=galera
+ExecStart=/usr/local/bin/galerahealth -v
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Enable and start
+sudo systemctl enable galerahealth.service
+sudo systemctl start galerahealth.service
+```
+
+## 📄 License
+
+MIT License - see LICENSE file for details.
+
+## 🤝 Support
+
+For issues, questions, or contributions:
+
+1. **Check troubleshooting section** in this README
+2. **Use debug mode** (`-vvv`) to gather detailed logs
+3. **Review configuration files** for consistency
+4. **Verify network connectivity** between cluster nodes
+
+---
+
+**GaleraHealth** - Keep your Galera cluster healthy! 🚀
+
