@@ -192,17 +192,24 @@ func checkMySQLStatusOnAllNodes(analysis *ClusterAnalysis, connInfo *SSHConnecti
 	for i, node := range analysis.AllNodes {
 		fmt.Printf("   %d. %s - checking MySQL status...\n", i+1, node.NodeIP)
 
-		// Connect to the node using per-node credentials
-		sshClient, _, err := createSSHConnectionWithNodeCredentials(node.NodeIP, config)
-		if err != nil {
-			node.StatusError = fmt.Sprintf("SSH connection failed: %v", err)
-			fmt.Printf("      ❌ SSH connection failed: %v\n", err)
-			continue
-		}
+		// Check if this is localhost - use direct access instead of SSH
+		if isLocalhost(node.NodeIP) || connInfo.Username == "local" {
+			fmt.Printf("      🏠 Using local MySQL connection for localhost\n")
+			// Use nil SSH client for localhost - checkMySQLStatus will handle this
+			checkMySQLStatus(nil, node.NodeIP, mysqlCreds, node)
+		} else {
+			// Connect to remote node using per-node credentials
+			sshClient, _, err := createSSHConnectionWithNodeCredentials(node.NodeIP, config)
+			if err != nil {
+				node.StatusError = fmt.Sprintf("SSH connection failed: %v", err)
+				fmt.Printf("      ❌ SSH connection failed: %v\n", err)
+				continue
+			}
 
-		// Check MySQL status
-		checkMySQLStatus(sshClient, node.NodeIP, mysqlCreds, node)
-		sshClient.Close()
+			// Check MySQL status on remote node
+			checkMySQLStatus(sshClient, node.NodeIP, mysqlCreds, node)
+			sshClient.Close()
+		}
 
 		if node.MySQLResponding {
 			fmt.Printf("      ✓ MySQL responding (Size: %d, Status: %s, Ready: %t, State: %s)\n",

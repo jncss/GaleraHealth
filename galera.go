@@ -108,6 +108,17 @@ func getGaleraClusterInfo(sshClient *SSHClient, nodeIP string) (*GaleraClusterIn
 		NodeIP: nodeIP,
 	}
 
+	// Helper function to execute commands either locally or via SSH
+	executeCommand := func(cmd string) (string, error) {
+		if sshClient == nil {
+			// Execute locally for localhost
+			return executeLocalCommand(cmd)
+		} else {
+			// Execute via SSH for remote nodes
+			return sshClient.executeCommand(cmd)
+		}
+	}
+
 	logNormal("🔍 Searching for cluster information...")
 
 	// Search recursively for all .cnf files in /etc/mysql and also check /etc/my.cnf
@@ -116,7 +127,7 @@ func getGaleraClusterInfo(sshClient *SSHClient, nodeIP string) (*GaleraClusterIn
 	var foundConfigs []string
 
 	// Find all .cnf files recursively in /etc/mysql
-	output, err := sshClient.executeCommand("find /etc/mysql -name '*.cnf' -type f 2>/dev/null")
+	output, err := executeCommand("find /etc/mysql -name '*.cnf' -type f 2>/dev/null")
 	if err == nil {
 		lines := strings.Split(strings.TrimSpace(output), "\n")
 		for _, line := range lines {
@@ -128,7 +139,7 @@ func getGaleraClusterInfo(sshClient *SSHClient, nodeIP string) (*GaleraClusterIn
 	}
 
 	// Also check /etc/my.cnf
-	output, err = sshClient.executeCommand("test -f /etc/my.cnf && echo '/etc/my.cnf' || echo ''")
+	output, err = executeCommand("test -f /etc/my.cnf && echo '/etc/my.cnf' || echo ''")
 	if err == nil {
 		line := strings.TrimSpace(output)
 		if line != "" {
@@ -150,7 +161,7 @@ func getGaleraClusterInfo(sshClient *SSHClient, nodeIP string) (*GaleraClusterIn
 		logVerbose("   Analyzing %s...", configPath)
 
 		// Read file content
-		content, err := sshClient.executeCommand(fmt.Sprintf("cat %s", configPath))
+		content, err := executeCommand(fmt.Sprintf("cat %s", configPath))
 		if err != nil {
 			logVerbose("   ⚠️  Error reading %s: %v", configPath, err)
 			continue
@@ -249,6 +260,17 @@ func extractConfigValue(content, key string) string {
 
 // getRuntimeMySQLInfo gets Galera information from MySQL runtime variables
 func getRuntimeMySQLInfo(sshClient *SSHClient) (*GaleraClusterInfo, error) {
+	// Helper function to execute commands either locally or via SSH
+	executeCommand := func(cmd string) (string, error) {
+		if sshClient == nil {
+			// Execute locally for localhost
+			return executeLocalCommand(cmd)
+		} else {
+			// Execute via SSH for remote nodes
+			return sshClient.executeCommand(cmd)
+		}
+	}
+
 	// Try to get information from runtime variables
 	queries := []string{
 		"mysql -e \"SHOW VARIABLES LIKE 'wsrep_cluster_name';\"",
@@ -260,7 +282,7 @@ func getRuntimeMySQLInfo(sshClient *SSHClient) (*GaleraClusterInfo, error) {
 	info := &GaleraClusterInfo{}
 
 	for _, query := range queries {
-		output, err := sshClient.executeCommand(query)
+		output, err := executeCommand(query)
 		if err != nil {
 			continue // If MySQL is not accessible, continue
 		}
@@ -299,11 +321,22 @@ func getRuntimeMySQLInfo(sshClient *SSHClient) (*GaleraClusterInfo, error) {
 
 // checkMySQLStatus checks MySQL/MariaDB status on a node
 func checkMySQLStatus(sshClient *SSHClient, nodeIP string, mysqlCreds *MySQLConnectionInfo, info *GaleraClusterInfo) {
+	// Helper function to execute commands either locally or via SSH
+	executeCommand := func(cmd string) (string, error) {
+		if sshClient == nil {
+			// Execute locally for localhost
+			return executeLocalCommand(cmd)
+		} else {
+			// Execute via SSH for remote nodes
+			return sshClient.executeCommand(cmd)
+		}
+	}
+
 	// First, check if MySQL/MariaDB service is running
-	serviceCheck, _ := sshClient.executeCommand("systemctl is-active mysql mariadb 2>/dev/null || service mysql status 2>/dev/null || service mariadb status 2>/dev/null")
+	serviceCheck, _ := executeCommand("systemctl is-active mysql mariadb 2>/dev/null || service mysql status 2>/dev/null || service mariadb status 2>/dev/null")
 	if !strings.Contains(serviceCheck, "active") && !strings.Contains(serviceCheck, "running") {
 		// Get detailed service status
-		serviceStatus, _ := sshClient.executeCommand("systemctl status mysql mariadb 2>/dev/null | head -10")
+		serviceStatus, _ := executeCommand("systemctl status mysql mariadb 2>/dev/null | head -10")
 		info.StatusError = fmt.Sprintf("MySQL/MariaDB service is not running. Status: %s", strings.TrimSpace(serviceStatus))
 
 		// Provide suggestions for starting the service
@@ -325,7 +358,7 @@ func checkMySQLStatus(sshClient *SSHClient, nodeIP string, mysqlCreds *MySQLConn
 
 	// Test basic connectivity first
 	testCmd := fmt.Sprintf("%s -e \"SELECT 1;\" 2>&1", mysqlCmd)
-	output, err := sshClient.executeCommand(testCmd)
+	output, err := executeCommand(testCmd)
 	if err != nil || strings.Contains(output, "ERROR") {
 		// If TCP fails, try socket connection
 		if mysqlCreds.Password != "" {
@@ -335,7 +368,7 @@ func checkMySQLStatus(sshClient *SSHClient, nodeIP string, mysqlCreds *MySQLConn
 		}
 
 		testCmd = fmt.Sprintf("%s -e \"SELECT 1;\" 2>&1", mysqlCmd)
-		output, err = sshClient.executeCommand(testCmd)
+		output, err = executeCommand(testCmd)
 		if err != nil || strings.Contains(output, "ERROR") {
 			// Get diagnostic information
 			diagnostic := diagnoseMySQL(sshClient, nodeIP)
@@ -346,7 +379,7 @@ func checkMySQLStatus(sshClient *SSHClient, nodeIP string, mysqlCreds *MySQLConn
 
 	// Check cluster size
 	cmd := fmt.Sprintf("%s -e \"SHOW STATUS LIKE 'wsrep_cluster_size';\" 2>&1", mysqlCmd)
-	output, err = sshClient.executeCommand(cmd)
+	output, err = executeCommand(cmd)
 	if err != nil || strings.Contains(output, "ERROR") {
 		info.StatusError = fmt.Sprintf("Failed to get cluster size. Error: %s", strings.TrimSpace(output))
 		return
@@ -357,19 +390,19 @@ func checkMySQLStatus(sshClient *SSHClient, nodeIP string, mysqlCreds *MySQLConn
 
 		// Check cluster status
 		cmd = fmt.Sprintf("%s -e \"SHOW STATUS LIKE 'wsrep_cluster_status';\" 2>&1", mysqlCmd)
-		if output, err := sshClient.executeCommand(cmd); err == nil && !strings.Contains(output, "ERROR") {
+		if output, err := executeCommand(cmd); err == nil && !strings.Contains(output, "ERROR") {
 			parseClusterStatus(output, info)
 		}
 
 		// Check if node is ready
 		cmd = fmt.Sprintf("%s -e \"SHOW STATUS LIKE 'wsrep_ready';\" 2>&1", mysqlCmd)
-		if output, err := sshClient.executeCommand(cmd); err == nil && !strings.Contains(output, "ERROR") {
+		if output, err := executeCommand(cmd); err == nil && !strings.Contains(output, "ERROR") {
 			parseReadyStatus(output, info)
 		}
 
 		// Check local state comment
 		cmd = fmt.Sprintf("%s -e \"SHOW STATUS LIKE 'wsrep_local_state_comment';\" 2>&1", mysqlCmd)
-		if output, err := sshClient.executeCommand(cmd); err == nil && !strings.Contains(output, "ERROR") {
+		if output, err := executeCommand(cmd); err == nil && !strings.Contains(output, "ERROR") {
 			parseLocalStateComment(output, info)
 		}
 	} else {
@@ -381,20 +414,31 @@ func checkMySQLStatus(sshClient *SSHClient, nodeIP string, mysqlCreds *MySQLConn
 func diagnoseMySQL(sshClient *SSHClient, nodeIP string) string {
 	var diagnostic []string
 
+	// Helper function to execute commands either locally or via SSH
+	executeCmd := func(cmd string) (string, error) {
+		if sshClient == nil {
+			// Execute locally for localhost
+			return executeLocalCommand(cmd)
+		} else {
+			// Execute via SSH for remote nodes
+			return sshClient.executeCommand(cmd)
+		}
+	}
+
 	// Check if MySQL/MariaDB is installed
-	checkInstalled, _ := sshClient.executeCommand("which mysql mysqld mariadb 2>/dev/null")
+	checkInstalled, _ := executeCmd("which mysql mysqld mariadb 2>/dev/null")
 	if checkInstalled == "" {
 		diagnostic = append(diagnostic, "MySQL/MariaDB client not found - may not be installed")
 	}
 
 	// Check service status with more detail
-	serviceStatus, _ := sshClient.executeCommand("systemctl status mysql mariadb 2>/dev/null | head -3")
+	serviceStatus, _ := executeCmd("systemctl status mysql mariadb 2>/dev/null | head -3")
 	if serviceStatus != "" {
 		diagnostic = append(diagnostic, fmt.Sprintf("Service status: %s", strings.TrimSpace(serviceStatus)))
 	}
 
 	// Check if socket file exists
-	socketCheck, _ := sshClient.executeCommand("ls -la /run/mysqld/mysqld.sock /var/lib/mysql/mysql.sock /tmp/mysql.sock 2>/dev/null")
+	socketCheck, _ := executeCmd("ls -la /run/mysqld/mysqld.sock /var/lib/mysql/mysql.sock /tmp/mysql.sock 2>/dev/null")
 	if socketCheck != "" {
 		diagnostic = append(diagnostic, fmt.Sprintf("Socket files found: %s", strings.TrimSpace(socketCheck)))
 	} else {
@@ -402,7 +446,7 @@ func diagnoseMySQL(sshClient *SSHClient, nodeIP string) string {
 	}
 
 	// Check if port 3306 is listening (try both netstat and ss)
-	portCheck, _ := sshClient.executeCommand("ss -tlnp | grep 3306 2>/dev/null || netstat -tlnp | grep 3306 2>/dev/null")
+	portCheck, _ := executeCmd("ss -tlnp | grep 3306 2>/dev/null || netstat -tlnp | grep 3306 2>/dev/null")
 	if portCheck != "" {
 		diagnostic = append(diagnostic, fmt.Sprintf("Port 3306 status: %s", strings.TrimSpace(portCheck)))
 	} else {
@@ -410,7 +454,7 @@ func diagnoseMySQL(sshClient *SSHClient, nodeIP string) string {
 	}
 
 	// Check for recent service errors in logs
-	errorCheck, _ := sshClient.executeCommand("journalctl -u mysql -u mariadb --no-pager -n 3 --since '1 hour ago' 2>/dev/null | grep -i error | tail -1")
+	errorCheck, _ := executeCmd("journalctl -u mysql -u mariadb --no-pager -n 3 --since '1 hour ago' 2>/dev/null | grep -i error | tail -1")
 	if errorCheck != "" {
 		diagnostic = append(diagnostic, fmt.Sprintf("Recent error: %s", strings.TrimSpace(errorCheck)))
 	}
@@ -422,8 +466,19 @@ func diagnoseMySQL(sshClient *SSHClient, nodeIP string) string {
 func getSuggestionsForInactiveService(sshClient *SSHClient) string {
 	var suggestions []string
 
+	// Helper function to execute commands either locally or via SSH
+	executeCmd := func(cmd string) (string, error) {
+		if sshClient == nil {
+			// Execute locally for localhost
+			return executeLocalCommand(cmd)
+		} else {
+			// Execute via SSH for remote nodes
+			return sshClient.executeCommand(cmd)
+		}
+	}
+
 	// Check which service name to use
-	mysqlCheck, _ := sshClient.executeCommand("systemctl list-unit-files | grep -E '^(mysql|mariadb)' | head -1")
+	mysqlCheck, _ := executeCmd("systemctl list-unit-files | grep -E '^(mysql|mariadb)' | head -1")
 	if strings.Contains(mysqlCheck, "mysql") {
 		suggestions = append(suggestions, "Try: sudo systemctl start mysql && sudo systemctl enable mysql")
 	} else if strings.Contains(mysqlCheck, "mariadb") {
@@ -433,13 +488,13 @@ func getSuggestionsForInactiveService(sshClient *SSHClient) string {
 	}
 
 	// Check for common config issues
-	configCheck, _ := sshClient.executeCommand("systemctl status mysql mariadb 2>/dev/null | grep -i 'failed\\|error'")
+	configCheck, _ := executeCmd("systemctl status mysql mariadb 2>/dev/null | grep -i 'failed\\|error'")
 	if configCheck != "" {
 		suggestions = append(suggestions, "Check service logs: sudo journalctl -u mysql -u mariadb --no-pager -n 20")
 	}
 
 	// Check if it's a Galera specific issue
-	galeraCheck, _ := sshClient.executeCommand("grep -r 'wsrep\\|galera' /etc/mysql/ 2>/dev/null | head -1")
+	galeraCheck, _ := executeCmd("grep -r 'wsrep\\|galera' /etc/mysql/ 2>/dev/null | head -1")
 	if galeraCheck != "" {
 		suggestions = append(suggestions, "For Galera cluster startup, you may need to bootstrap: sudo galera_new_cluster")
 	}
