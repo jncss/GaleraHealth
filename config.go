@@ -1,0 +1,202 @@
+package main
+
+import (
+	"bufio"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// Config represents the application configuration
+type Config struct {
+	LastNodeIP             string `json:"last_node_ip"`
+	LastSSHUsername        string `json:"last_ssh_username"`
+	LastMySQLUsername      string `json:"last_mysql_username"`
+	LastCheckCoherence     bool   `json:"last_check_coherence"`
+	LastCheckMySQL         bool   `json:"last_check_mysql"`
+	EncryptedMySQLPassword string `json:"encrypted_mysql_password,omitempty"`
+	HasSavedPassword       bool   `json:"has_saved_password"`
+}
+
+// getConfigPath returns the path to the configuration file
+func getConfigPath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(homeDir, ".galerahealth")
+}
+
+// generateKey generates a key from the node IP for encryption
+func generateKey(nodeIP string) []byte {
+	hash := sha256.Sum256([]byte("galerahealth:" + nodeIP))
+	return hash[:]
+}
+
+// encryptPassword encrypts a password using AES-GCM
+func encryptPassword(password, nodeIP string) (string, error) {
+	if password == "" {
+		return "", nil
+	}
+
+	key := generateKey(nodeIP)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to create cipher: %v", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCM: %v", err)
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", fmt.Errorf("failed to generate nonce: %v", err)
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, []byte(password), nil)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// decryptPassword decrypts a password using AES-GCM
+func decryptPassword(encryptedPassword, nodeIP string) (string, error) {
+	if encryptedPassword == "" {
+		return "", nil
+	}
+
+	key := generateKey(nodeIP)
+	ciphertext, err := base64.StdEncoding.DecodeString(encryptedPassword)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode base64: %v", err)
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to create cipher: %v", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCM: %v", err)
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt: %v", err)
+	}
+
+	return string(plaintext), nil
+}
+
+// loadConfig loads configuration from ~/.galerahealth
+func loadConfig() *Config {
+	configPath := getConfigPath()
+	if configPath == "" {
+		return &Config{} // Return empty config if can't get home dir
+	}
+
+	// Check if config file exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return &Config{} // Return empty config if file doesn't exist
+	}
+
+	// Read and parse config file
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		logNormal("Warning: Could not read config file: %v", err)
+		return &Config{}
+	}
+
+	var config Config
+	if err := json.Unmarshal(data, &config); err != nil {
+		logNormal("Warning: Could not parse config file: %v", err)
+		return &Config{}
+	}
+
+	return &config
+}
+
+// saveConfig saves configuration to ~/.galerahealth
+func saveConfig(config *Config) error {
+	configPath := getConfigPath()
+	if configPath == "" {
+		return fmt.Errorf("could not determine home directory")
+	}
+
+	// Convert config to JSON
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("could not marshal config: %v", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
+		return fmt.Errorf("could not write config file: %v", err)
+	}
+
+	return nil
+}
+
+// clearConfig removes the configuration file
+func clearConfig() error {
+	configPath := getConfigPath()
+	if configPath == "" {
+		return fmt.Errorf("could not determine home directory")
+	}
+
+	// Check if config file exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil // Already doesn't exist
+	}
+
+	// Remove the file
+	if err := os.Remove(configPath); err != nil {
+		return fmt.Errorf("could not remove config file: %v", err)
+	}
+
+	return nil
+}
+
+// promptForInputWithDefault prompts for input with a default value
+func promptForInputWithDefault(message, defaultValue string) string {
+	if defaultValue != "" {
+		fmt.Printf("%s (default: %s): ", message, defaultValue)
+	} else {
+		fmt.Print(message + ": ")
+	}
+
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	input := strings.TrimSpace(scanner.Text())
+
+	if input == "" && defaultValue != "" {
+		return defaultValue
+	}
+	return input
+}
+
+// promptForBoolWithDefault prompts for a boolean input with a default value
+func promptForBoolWithDefault(message string, defaultValue bool) bool {
+	defaultStr := "N"
+	if defaultValue {
+		defaultStr = "Y"
+	}
+
+	response := promptForInputWithDefault(fmt.Sprintf("%s (y/N)", message), defaultStr)
+	return strings.ToLower(strings.TrimSpace(response)) == "y"
+}
