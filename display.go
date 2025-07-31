@@ -78,10 +78,11 @@ func displayClusterAnalysis(analysis *ClusterAnalysis) {
 
 		if localhostErrors > 0 && localhostErrors == len(analysis.ConfigErrors) {
 			fmt.Println()
-			fmt.Println("💡 TIP: To analyze all cluster nodes, run GaleraHealth with SSH access:")
-			fmt.Printf("   galerahealth  # Enter a remote node IP instead of localhost\n")
+			fmt.Println("💡 TIP: GaleraHealth can connect to remote nodes even when started with localhost:")
+			fmt.Printf("   galerahealth  # When prompted, choose 'y' for cluster coherence analysis\n")
+			fmt.Printf("   # The system will request SSH credentials for remote nodes as needed\n")
 			if len(analysis.ClusterNodes) > 1 {
-				fmt.Printf("   # Example: Enter %s when prompted for node IP\n", analysis.ClusterNodes[1])
+				fmt.Printf("   # Remote nodes detected: %v\n", analysis.ClusterNodes[1:])
 			}
 		}
 	}

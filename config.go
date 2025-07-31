@@ -206,12 +206,15 @@ func promptForInputWithDefault(message, defaultValue string) string {
 // promptForBoolWithDefault prompts for a boolean input with a default value
 func promptForBoolWithDefault(message string, defaultValue bool) bool {
 	defaultStr := "N"
+	promptSuffix := "(y/N)"
 	if defaultValue {
 		defaultStr = "Y"
+		promptSuffix = "(Y/n)"
 	}
 
-	response := promptForInputWithDefault(fmt.Sprintf("%s (y/N)", message), defaultStr)
-	return strings.ToLower(strings.TrimSpace(response)) == "y"
+	response := promptForInputWithDefault(fmt.Sprintf("%s %s", message, promptSuffix), defaultStr)
+	response = strings.ToLower(strings.TrimSpace(response))
+	return response == "y" || response == "yes"
 }
 
 // getNodeCredentials retrieves credentials for a specific node

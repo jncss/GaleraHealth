@@ -206,9 +206,15 @@ func main() {
 	// Display initial node information
 	displayClusterInfo(initialClusterInfo)
 
-	// Ask if user wants to check cluster coherence with default
+	// Ask if user wants to check cluster coherence with intelligent default
 	logMinimal("")
-	checkCoherence := promptForBoolWithDefault("Do you want to check cluster configuration coherence across all nodes?", config.LastCheckCoherence)
+	// When using localhost, default to checking cluster coherence since user probably wants full analysis
+	defaultCoherence := config.LastCheckCoherence
+	if isLocalhost(nodeIP) && len(initialClusterInfo.ClusterAddress) > 0 && strings.Contains(initialClusterInfo.ClusterAddress, ",") {
+		defaultCoherence = true // Default to yes for localhost with multi-node cluster
+		logVerbose("🔍 Multi-node cluster detected with localhost, defaulting to cluster analysis")
+	}
+	checkCoherence := promptForBoolWithDefault("Do you want to check cluster configuration coherence across all nodes?", defaultCoherence)
 
 	// Update config with current values
 	config.LastNodeIP = nodeIP

@@ -67,11 +67,33 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 		var err error
 
 		if connInfo.Username == "local" {
-			// Initial connection was localhost, cannot connect to remote nodes without SSH credentials
-			analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Cannot connect to remote node %s: initial connection was localhost (no SSH credentials available)", nodeIP))
-			analysis.IsCoherent = false
-			fmt.Printf("      ⚠️  Skipped: initial connection was localhost, no SSH credentials for remote nodes\n")
-			continue
+			// Initial connection was localhost, but we can still connect to remote nodes via SSH
+			logVerbose("      🌐 Initial node is localhost, attempting SSH connection to remote node %s", nodeIP)
+			var newConnInfo *SSHConnectionInfo
+			sshClient, newConnInfo, err = createSSHConnectionWithNodeCredentials(nodeIP, config)
+			if err != nil {
+				analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Failed to connect to remote node %s: %v", nodeIP, err))
+				analysis.IsCoherent = false
+				fmt.Printf("      ❌ SSH connection failed: %v\n", err)
+				continue
+			}
+
+			// Save the new connection info for this remote node
+			if newConnInfo != nil {
+				sshPassword := ""
+				if newConnInfo.HasPassword {
+					sshPassword = newConnInfo.Password
+				}
+				err = config.setNodeCredentials(nodeIP, newConnInfo.Username, "", sshPassword, "", newConnInfo.UsedKeys)
+				if err != nil {
+					fmt.Printf("      ⚠️  Warning: Could not save credentials for node %s: %v\n", nodeIP, err)
+				} else {
+					if newConnInfo.HasPassword {
+						fmt.Printf("      ✓ SSH password saved for node %s\n", nodeIP)
+					}
+					fmt.Printf("      ✓ SSH credentials saved for node %s\n", nodeIP)
+				}
+			}
 		} else {
 			// Use per-node credentials for connection
 			var newConnInfo *SSHConnectionInfo
