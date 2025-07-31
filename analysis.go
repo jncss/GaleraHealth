@@ -74,15 +74,15 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 			continue
 		} else {
 			// Use per-node credentials for connection
-			sshClient, newConnInfo, err := createSSHConnectionWithNodeCredentials(nodeIP, config)
+			var newConnInfo *SSHConnectionInfo
+			sshClient, newConnInfo, err = createSSHConnectionWithNodeCredentials(nodeIP, config)
 			if err != nil {
 				analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Failed to connect to node %s: %v", nodeIP, err))
 				analysis.IsCoherent = false
 				fmt.Printf("      ❌ Connection failed: %v\n", err)
 				continue
 			}
-			sshClient.Close() // We'll reopen it when needed
-			
+
 			// Save the new connection info for this node if we got new credentials
 			if newConnInfo != nil {
 				err = config.setNodeCredentials(nodeIP, newConnInfo.Username, "", "", "", newConnInfo.UsedKeys)
@@ -90,15 +90,13 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 					fmt.Printf("      ⚠️  Warning: Could not save credentials for node %s: %v\n", nodeIP, err)
 				}
 			}
-			
-			// Now create connection using saved info
-			sshClient, _, err = createSSHConnectionWithNodeCredentials(nodeIP, config)
 		}
 
-		if err != nil {
-			analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Failed to connect to node %s: %v", nodeIP, err))
+		// Verify we have a valid SSH client
+		if sshClient == nil {
+			analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("SSH client is nil for node %s", nodeIP))
 			analysis.IsCoherent = false
-			fmt.Printf("      ❌ Connection failed: %v\n", err)
+			fmt.Printf("      ❌ SSH client is nil\n")
 			continue
 		}
 

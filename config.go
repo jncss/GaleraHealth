@@ -234,18 +234,18 @@ func (c *Config) setNodeCredentials(nodeIP string, sshUsername, mysqlUsername, s
 			break
 		}
 	}
-	
+
 	if creds == nil {
 		// Create new credentials entry
 		c.NodeCredentials = append(c.NodeCredentials, NodeCredentials{NodeIP: nodeIP})
 		creds = &c.NodeCredentials[len(c.NodeCredentials)-1]
 	}
-	
+
 	// Update credentials
 	creds.SSHUsername = sshUsername
 	creds.MySQLUsername = mysqlUsername
 	creds.UsesSSHKeys = usesSSHKeys
-	
+
 	// Encrypt and store SSH password if provided
 	if sshPassword != "" {
 		encryptedSSH, err := encryptPassword(sshPassword, nodeIP)
@@ -255,7 +255,7 @@ func (c *Config) setNodeCredentials(nodeIP string, sshUsername, mysqlUsername, s
 		creds.EncryptedSSHPassword = encryptedSSH
 		creds.HasSSHPassword = true
 	}
-	
+
 	// Encrypt and store MySQL password if provided
 	if mysqlPassword != "" {
 		encryptedMySQL, err := encryptPassword(mysqlPassword, nodeIP)
@@ -265,7 +265,7 @@ func (c *Config) setNodeCredentials(nodeIP string, sshUsername, mysqlUsername, s
 		creds.EncryptedMySQLPassword = encryptedMySQL
 		creds.HasMySQLPassword = true
 	}
-	
+
 	return nil
 }
 
@@ -275,7 +275,7 @@ func (c *Config) getNodeSSHPassword(nodeIP string) (string, error) {
 	if creds == nil || !creds.HasSSHPassword {
 		return "", nil
 	}
-	
+
 	return decryptPassword(creds.EncryptedSSHPassword, nodeIP)
 }
 
@@ -285,6 +285,6 @@ func (c *Config) getNodeMySQLPassword(nodeIP string) (string, error) {
 	if creds == nil || !creds.HasMySQLPassword {
 		return "", nil
 	}
-	
+
 	return decryptPassword(creds.EncryptedMySQLPassword, nodeIP)
 }

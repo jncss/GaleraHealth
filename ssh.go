@@ -103,17 +103,17 @@ func createSSHConnectionWithInfo(host string, connInfo *SSHConnectionInfo) (*SSH
 		return client, err
 	}
 
-		return nil, fmt.Errorf("no SSH connection method available")
+	return nil, fmt.Errorf("no SSH connection method available")
 }
 
 // createSSHConnectionWithNodeCredentials creates SSH connection using node-specific credentials
 func createSSHConnectionWithNodeCredentials(host string, config *Config) (*SSHClient, *SSHConnectionInfo, error) {
 	creds := config.getNodeCredentials(host)
-	
+
 	if creds != nil {
 		// We have saved credentials for this node
 		logVerbose("      🔍 Found saved credentials for node %s", host)
-		
+
 		if creds.UsesSSHKeys {
 			// Try SSH keys first
 			logVerbose("      🔑 Trying SSH keys for %s...", host)
@@ -129,7 +129,7 @@ func createSSHConnectionWithNodeCredentials(host string, config *Config) (*SSHCl
 			}
 			logVerbose("      ⚠️  SSH keys failed for %s: %v", host, err)
 		}
-		
+
 		if creds.HasSSHPassword {
 			// Try saved password
 			logVerbose("      🔐 Trying saved password for %s...", host)
@@ -150,12 +150,12 @@ func createSSHConnectionWithNodeCredentials(host string, config *Config) (*SSHCl
 				logVerbose("      ⚠️  Saved password failed for %s: %v", host, err)
 			}
 		}
-		
+
 		// Use saved username but need new password
 		logNormal("Saved credentials for %s failed, requesting new password...", host)
 		return createSSHConnectionWithFallbackAndUsername(host, creds.SSHUsername)
 	}
-	
+
 	// No saved credentials, use fallback
 	logVerbose("      🆕 No saved credentials for %s, using fallback authentication", host)
 	return createSSHConnectionWithFallbackAndUsername(host, "root")
