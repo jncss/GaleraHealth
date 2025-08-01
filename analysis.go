@@ -5,6 +5,13 @@ import (
 	"strings"
 )
 
+// progressPrint prints progress messages, suppressed in report mode
+func progressPrint(format string, args ...interface{}) {
+	if !reportMode {
+		fmt.Printf(format, args...)
+	}
+}
+
 // performClusterAnalysis analyzes cluster coherence across all nodes
 func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnectionInfo, config *Config) (*ClusterAnalysis, string, error) {
 	analysis := &ClusterAnalysis{
@@ -36,7 +43,7 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 		return nil, "", fmt.Errorf("no cluster nodes found in wsrep_cluster_address")
 	}
 
-	fmt.Printf("📋 Found %d nodes in cluster configuration\n", len(analysis.ClusterNodes))
+	progressPrint("📋 Found %d nodes in cluster configuration\n", len(analysis.ClusterNodes))
 
 	// If initial connection was localhost, try to identify which cluster node represents localhost
 	var localhostNodeIP string
@@ -51,16 +58,16 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 		if nodeIP == initialNode.NodeIP || isLocalhost(nodeIP) || nodeIP == localhostNodeIP {
 			// Skip initial node (already analyzed), localhost references, or identified localhost IP
 			if nodeIP == initialNode.NodeIP {
-				fmt.Printf("   %d. %s (initial node - already analyzed)\n", i+1, nodeIP)
+				progressPrint("   %d. %s (initial node - already analyzed)\n", i+1, nodeIP)
 			} else if isLocalhost(nodeIP) {
-				fmt.Printf("   %d. %s (localhost - skipping SSH)\n", i+1, nodeIP)
+				progressPrint("   %d. %s (localhost - skipping SSH)\n", i+1, nodeIP)
 			} else if nodeIP == localhostNodeIP {
-				fmt.Printf("   %d. %s (this is localhost %s - already analyzed)\n", i+1, nodeIP, initialNode.NodeIP)
+				progressPrint("   %d. %s (this is localhost %s - already analyzed)\n", i+1, nodeIP, initialNode.NodeIP)
 			}
 			continue
 		}
 
-		fmt.Printf("   %d. %s - connecting...\n", i+1, nodeIP)
+		progressPrint("   %d. %s - connecting...\n", i+1, nodeIP)
 
 		// Check if we have valid SSH connection info
 		var sshClient *SSHClient
@@ -80,7 +87,7 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 				analysis.AllNodes = append(analysis.AllNodes, nodeInfo)
 				analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Failed to connect to remote node %s: %v", nodeIP, err))
 				analysis.IsCoherent = false
-				fmt.Printf("      ❌ SSH connection failed: %v\n", err)
+				progressPrint("      ❌ SSH connection failed: %v\n", err)
 				continue
 			}
 
@@ -92,12 +99,12 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 				}
 				err = config.setNodeCredentials(nodeIP, newConnInfo.Username, "", sshPassword, "", newConnInfo.UsedKeys)
 				if err != nil {
-					fmt.Printf("      ⚠️  Warning: Could not save credentials for node %s: %v\n", nodeIP, err)
+					progressPrint("      ⚠️  Warning: Could not save credentials for node %s: %v\n", nodeIP, err)
 				} else {
 					if newConnInfo.HasPassword {
-						fmt.Printf("      ✓ SSH password saved for node %s\n", nodeIP)
+						progressPrint("      ✓ SSH password saved for node %s\n", nodeIP)
 					}
-					fmt.Printf("      ✓ SSH credentials saved for node %s\n", nodeIP)
+					progressPrint("      ✓ SSH credentials saved for node %s\n", nodeIP)
 				}
 			}
 		} else {
@@ -113,7 +120,7 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 				analysis.AllNodes = append(analysis.AllNodes, nodeInfo)
 				analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Failed to connect to node %s: %v", nodeIP, err))
 				analysis.IsCoherent = false
-				fmt.Printf("      ❌ Connection failed: %v\n", err)
+				progressPrint("      ❌ Connection failed: %v\n", err)
 				continue
 			}
 
@@ -125,12 +132,12 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 				}
 				err = config.setNodeCredentials(nodeIP, newConnInfo.Username, "", sshPassword, "", newConnInfo.UsedKeys)
 				if err != nil {
-					fmt.Printf("      ⚠️  Warning: Could not save credentials for node %s: %v\n", nodeIP, err)
+					progressPrint("      ⚠️  Warning: Could not save credentials for node %s: %v\n", nodeIP, err)
 				} else {
 					if newConnInfo.HasPassword {
-						fmt.Printf("      ✓ SSH password saved for node %s\n", nodeIP)
+						progressPrint("      ✓ SSH password saved for node %s\n", nodeIP)
 					}
-					fmt.Printf("      ✓ SSH credentials saved for node %s\n", nodeIP)
+					progressPrint("      ✓ SSH credentials saved for node %s\n", nodeIP)
 				}
 			}
 		}
@@ -145,7 +152,7 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 			analysis.AllNodes = append(analysis.AllNodes, nodeInfo)
 			analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("SSH client is nil for node %s", nodeIP))
 			analysis.IsCoherent = false
-			fmt.Printf("      ❌ SSH client is nil\n")
+			progressPrint("      ❌ SSH client is nil\n")
 			continue
 		}
 
@@ -162,12 +169,12 @@ func performClusterAnalysis(initialNode *GaleraClusterInfo, connInfo *SSHConnect
 			analysis.AllNodes = append(analysis.AllNodes, nodeInfo)
 			analysis.ConfigErrors = append(analysis.ConfigErrors, fmt.Sprintf("Failed to get cluster info from node %s: %v", nodeIP, err))
 			analysis.IsCoherent = false
-			fmt.Printf("      ❌ Failed to get cluster info: %v\n", err)
+			progressPrint("      ❌ Failed to get cluster info: %v\n", err)
 			continue
 		}
 
 		analysis.AllNodes = append(analysis.AllNodes, nodeInfo)
-		fmt.Printf("      ✓ Configuration retrieved\n")
+		progressPrint("      ✓ Configuration retrieved\n")
 	}
 
 	// Analyze configuration coherence
@@ -214,18 +221,18 @@ func (a *ClusterAnalysis) analyzeCoherence() {
 // checkMySQLStatusOnAllNodes checks MySQL/MariaDB status on all nodes in the analysis
 func checkMySQLStatusOnAllNodes(analysis *ClusterAnalysis, connInfo *SSHConnectionInfo, mysqlCreds *MySQLConnectionInfo, config *Config, localhostNodeIP string) error {
 	for i, node := range analysis.AllNodes {
-		fmt.Printf("   %d. %s - checking MySQL status...\n", i+1, node.NodeIP)
+		progressPrint("   %d. %s - checking MySQL status...\n", i+1, node.NodeIP)
 
 		// Skip nodes that already have connection errors
 		if node.StatusError != "" && strings.Contains(node.StatusError, "SSH connection failed") {
-			fmt.Printf("      ❌ Skipping MySQL check due to SSH connection failure: %s\n", node.StatusError)
+			progressPrint("      ❌ Skipping MySQL check due to SSH connection failure: %s\n", node.StatusError)
 			continue
 		}
 
 		// Check if this is localhost - use direct access instead of SSH
 		// Consider both localhost references and the identified localhost IP
 		if isLocalhost(node.NodeIP) || node.NodeIP == localhostNodeIP {
-			fmt.Printf("      🏠 Using local MySQL connection for localhost\n")
+			progressPrint("      🏠 Using local MySQL connection for localhost\n")
 			// Use nil SSH client for localhost - checkMySQLStatus will handle this
 			checkMySQLStatus(nil, node.NodeIP, mysqlCreds, node)
 		} else {
@@ -233,7 +240,7 @@ func checkMySQLStatusOnAllNodes(analysis *ClusterAnalysis, connInfo *SSHConnecti
 			sshClient, _, err := createSSHConnectionWithNodeCredentials(node.NodeIP, config)
 			if err != nil {
 				node.StatusError = fmt.Sprintf("SSH connection failed: %v", err)
-				fmt.Printf("      ❌ SSH connection failed: %v\n", err)
+				progressPrint("      ❌ SSH connection failed: %v\n", err)
 				continue
 			}
 
@@ -243,10 +250,10 @@ func checkMySQLStatusOnAllNodes(analysis *ClusterAnalysis, connInfo *SSHConnecti
 		}
 
 		if node.MySQLResponding {
-			fmt.Printf("      ✓ MySQL responding (Size: %d, Status: %s, Ready: %t, State: %s)\n",
+			progressPrint("      ✓ MySQL responding (Size: %d, Status: %s, Ready: %t, State: %s)\n",
 				node.ClusterSize, node.ClusterStatus, node.IsReady, node.LocalStateComment)
 		} else {
-			fmt.Printf("      ❌ MySQL not responding: %s\n", node.StatusError)
+			progressPrint("      ❌ MySQL not responding: %s\n", node.StatusError)
 		}
 	}
 

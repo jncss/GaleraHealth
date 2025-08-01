@@ -15,6 +15,12 @@ import (
 	"strings"
 )
 
+// External variable for -y option (defined in main.go)
+var useDefaults bool
+
+// External variable for -s option (summary mode - only show summary)
+var reportMode bool
+
 // NodeCredentials holds SSH and MySQL credentials for a specific node
 type NodeCredentials struct {
 	NodeIP                 string `json:"node_ip"`
@@ -187,6 +193,22 @@ func clearConfig() error {
 
 // promptForInputWithDefault prompts for input with a default value
 func promptForInputWithDefault(message, defaultValue string) string {
+	// If -y flag is set and we have a default value, use it without prompting
+	if useDefaults && defaultValue != "" {
+		if !reportMode {
+			logVerbose("Using default value for '%s': %s", message, defaultValue)
+		}
+		return defaultValue
+	}
+
+	// If -y flag is set but no default value, return empty (caller should handle this)
+	if useDefaults && defaultValue == "" {
+		if !reportMode {
+			logVerbose("No default value available for '%s' in -y mode", message)
+		}
+		return ""
+	}
+
 	if defaultValue != "" {
 		fmt.Printf("%s (default: %s): ", message, defaultValue)
 	} else {
@@ -205,6 +227,14 @@ func promptForInputWithDefault(message, defaultValue string) string {
 
 // promptForBoolWithDefault prompts for a boolean input with a default value
 func promptForBoolWithDefault(message string, defaultValue bool) bool {
+	// If -y flag is set, use default value without prompting
+	if useDefaults {
+		if !reportMode {
+			logVerbose("Using default value for '%s': %t", message, defaultValue)
+		}
+		return defaultValue
+	}
+
 	defaultStr := "N"
 	promptSuffix := "(y/N)"
 	if defaultValue {

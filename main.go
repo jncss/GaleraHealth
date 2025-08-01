@@ -21,30 +21,37 @@ const (
 
 var currentVerbosity VerbosityLevel = VerbosityMinimal
 
-// logMinimal prints essential messages (always shown)
+// logMinimal prints essential messages (always shown, unless in report mode)
 func logMinimal(format string, args ...interface{}) {
-	fmt.Printf(format+"\n", args...)
+	if !reportMode {
+		fmt.Printf(format+"\n", args...)
+	}
 }
 
-// logNormal prints normal operational messages (-v and above)
+// logNormal prints normal operational messages (-v and above, suppressed in report mode)
 func logNormal(format string, args ...interface{}) {
-	if currentVerbosity >= VerbosityNormal {
+	if currentVerbosity >= VerbosityNormal && !reportMode {
 		fmt.Printf("📋 "+format+"\n", args...)
 	}
 }
 
-// logVerbose prints detailed operational messages (-vv and above)
+// logVerbose prints detailed operational messages (-vv and above, suppressed in report mode)
 func logVerbose(format string, args ...interface{}) {
-	if currentVerbosity >= VerbosityVerbose {
+	if currentVerbosity >= VerbosityVerbose && !reportMode {
 		fmt.Printf("🔍 "+format+"\n", args...)
 	}
 }
 
-// logDebug prints debug messages (-vvv only)
+// logDebug prints debug messages (-vvv only, suppressed in report mode)
 func logDebug(format string, args ...interface{}) {
-	if currentVerbosity >= VerbosityDebug {
+	if currentVerbosity >= VerbosityDebug && !reportMode {
 		fmt.Printf("🐛 "+format+"\n", args...)
 	}
+}
+
+// logReport prints messages always, even in report mode (for final summary)
+func logReport(format string, args ...interface{}) {
+	fmt.Printf(format+"\n", args...)
 }
 
 func main() {
@@ -64,6 +71,10 @@ func main() {
 		case strings.HasPrefix(arg, "-v"):
 			// Count consecutive 'v's for -vvv style
 			verbosityCount = len(arg) - 1
+		case arg == "-y", arg == "--yes":
+			useDefaults = true
+		case arg == "-s", arg == "--summary":
+			reportMode = true
 		default:
 			args = append(args, arg)
 		}
@@ -71,6 +82,13 @@ func main() {
 
 	// Set verbosity level
 	currentVerbosity = VerbosityLevel(verbosityCount)
+
+	// Validate report mode requirements
+	if reportMode && !useDefaults {
+		fmt.Println("Error: -s (summary mode) can only be used with -y (automated mode)")
+		fmt.Println("Usage: galerahealth -y -s")
+		os.Exit(1)
+	}
 
 	logDebug("Verbosity level set to: %d", currentVerbosity)
 
@@ -89,6 +107,8 @@ func main() {
 			fmt.Println()
 			fmt.Println("Usage:")
 			fmt.Println("  galerahealth                      Run the cluster monitor")
+			fmt.Println("  galerahealth -y                   Run using saved defaults without prompts")
+			fmt.Println("  galerahealth -y -s                Run automated with summary only")
 			fmt.Println("  galerahealth -v                   Run with normal verbosity")
 			fmt.Println("  galerahealth -vv                  Run with verbose output")
 			fmt.Println("  galerahealth -vvv                 Run with debug output")
@@ -96,6 +116,10 @@ func main() {
 			fmt.Println("  galerahealth --help               Show this help")
 			fmt.Println()
 			fmt.Printf("Configuration file: %s\n", getConfigPath())
+			fmt.Println()
+			fmt.Println("Options:")
+			fmt.Println("  -y, --yes     - Use saved defaults without prompting")
+			fmt.Println("  -s, --summary - Show only final summary (requires -y)")
 			fmt.Println()
 			fmt.Println("Verbosity levels:")
 			fmt.Println("  (none) - Minimal output (default)")
@@ -111,6 +135,9 @@ func main() {
 	}
 
 	logMinimal("=== GaleraHealth - Galera Cluster Monitor ===")
+	if useDefaults {
+		logMinimal("🚀 Running in automatic mode (-y) - using saved defaults")
+	}
 	logDebug("Application started with verbosity level %d", currentVerbosity)
 
 	// Load saved configuration
@@ -119,12 +146,20 @@ func main() {
 		logNormal("💾 Loaded saved configuration from %s", getConfigPath())
 		logVerbose("   Last used: Node IP: %s, SSH User: %s, MySQL User: %s",
 			config.LastNodeIP, config.LastSSHUsername, config.LastMySQLUsername)
+	} else if useDefaults {
+		logMinimal("⚠️  Using -y flag but no saved configuration found.")
+		logMinimal("    The application will use built-in defaults where possible.")
+		logMinimal("    Configuration file: %s", getConfigPath())
 	}
 
 	// Ask for node IP with default
 	nodeIP := promptForInputWithDefault("Enter the Galera cluster node IP", config.LastNodeIP)
 	if nodeIP == "" {
-		log.Fatal("Node IP is required")
+		if useDefaults {
+			log.Fatal("Node IP is required but no saved configuration found. Run without -y to configure.")
+		} else {
+			log.Fatal("Node IP is required")
+		}
 	}
 
 	// Ask for SSH username with default (only if not localhost)
@@ -203,17 +238,33 @@ func main() {
 		sshClient.Close()
 	}
 
-	// Display initial node information
-	displayClusterInfo(initialClusterInfo)
+	// Display initial node information (skip in report mode)
+	if !reportMode {
+		displayClusterInfo(initialClusterInfo)
+	}
 
 	// Ask if user wants to check cluster coherence with intelligent default
 	logMinimal("")
-	// When using localhost, default to checking cluster coherence since user probably wants full analysis
 	defaultCoherence := config.LastCheckCoherence
-	if isLocalhost(nodeIP) && len(initialClusterInfo.ClusterAddress) > 0 && strings.Contains(initialClusterInfo.ClusterAddress, ",") {
-		defaultCoherence = true // Default to yes for localhost with multi-node cluster
-		logVerbose("🔍 Multi-node cluster detected with localhost, defaulting to cluster analysis")
+
+	// Smart default detection for cluster coherence
+	isMultiNode := len(initialClusterInfo.ClusterAddress) > 0 && strings.Contains(initialClusterInfo.ClusterAddress, ",")
+
+	if isMultiNode {
+		// For multi-node clusters, default to checking coherence
+		defaultCoherence = true
+		if isLocalhost(nodeIP) {
+			logVerbose("🔍 Multi-node cluster detected with localhost, defaulting to cluster analysis")
+		} else {
+			logVerbose("🔍 Multi-node cluster detected, defaulting to cluster analysis")
+		}
+
+		// If using -y and we detected a multi-node cluster, override the saved preference
+		if useDefaults && !config.LastCheckCoherence {
+			logVerbose("🔍 Overriding saved preference due to multi-node cluster detection")
+		}
 	}
+
 	checkCoherence := promptForBoolWithDefault("Do you want to check cluster configuration coherence across all nodes?", defaultCoherence)
 
 	// Update config with current values
@@ -232,7 +283,9 @@ func main() {
 			log.Fatal("Error performing cluster analysis:", err)
 		}
 
-		displayClusterAnalysis(analysis)
+		if !reportMode {
+			displayClusterAnalysis(analysis)
+		}
 
 		// Ask if user wants to check MySQL/MariaDB status with default
 		logMinimal("")
@@ -255,8 +308,10 @@ func main() {
 				log.Printf("Error checking MySQL status: %v", err)
 			}
 
-			// Display results with MySQL status
-			displayClusterAnalysisWithMySQL(analysis)
+			// Display results with MySQL status (skip in report mode)
+			if !reportMode {
+				displayClusterAnalysisWithMySQL(analysis)
+			}
 		}
 
 		// Display final cluster summary
@@ -293,8 +348,10 @@ func getMySQLCredentials() *MySQLConnectionInfo {
 
 // getMySQLCredentialsWithDefault prompts for MySQL/MariaDB credentials with default username
 func getMySQLCredentialsWithDefault(defaultUsername string, config *Config, nodeIP string) *MySQLConnectionInfo {
-	fmt.Println()
-	fmt.Println("Enter MySQL/MariaDB credentials:")
+	if !reportMode {
+		fmt.Println()
+		fmt.Println("Enter MySQL/MariaDB credentials:")
+	}
 
 	if defaultUsername == "" {
 		defaultUsername = "root"
@@ -326,6 +383,12 @@ func getMySQLCredentialsWithDefault(defaultUsername string, config *Config, node
 
 	// If we don't have a password yet, prompt for it
 	if password == "" {
+		// If -y flag is used but no saved password, we can't proceed with MySQL check
+		if useDefaults {
+			logMinimal("⚠️  No saved MySQL password found with -y flag. Skipping MySQL operations.")
+			return &MySQLConnectionInfo{Username: username, Password: ""}
+		}
+
 		fmt.Print("MySQL password: ")
 		passwordBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Println()

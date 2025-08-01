@@ -102,6 +102,13 @@ func createSSHConnectionWithFallbackAndUsername(host, username string) (*SSHClie
 	}
 
 	logNormal("⚠️  Connection with keys failed: %v", err)
+
+	// If using -y flag, don't prompt for password - skip this node
+	if useDefaults {
+		logNormal("⚠️  -y flag active: skipping password prompt for node %s", host)
+		return nil, nil, fmt.Errorf("SSH connection failed and -y flag prevents password prompt")
+	}
+
 	logNormal("🔐 Attempting connection with password...")
 
 	// Second attempt: ask for password

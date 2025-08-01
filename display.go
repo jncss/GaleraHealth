@@ -5,6 +5,15 @@ import (
 	"strings"
 )
 
+// summaryPrint prints to console, respecting report mode
+func summaryPrint(format string, args ...interface{}) {
+	if reportMode {
+		fmt.Printf(format+"\n", args...)
+	} else {
+		logMinimal(format, args...)
+	}
+}
+
 // displayClusterInfo displays information about a single cluster node
 func displayClusterInfo(info *GaleraClusterInfo) {
 	fmt.Println("=== GALERA CLUSTER INFORMATION ===")
@@ -217,9 +226,9 @@ func displayClusterAnalysisWithMySQL(analysis *ClusterAnalysis) {
 
 // displayClusterSummary displays a final summary of the cluster health status
 func displayClusterSummary(analysis *ClusterAnalysis) {
-	logMinimal("")
-	logMinimal("=== CLUSTER HEALTH SUMMARY ===")
-	logMinimal("")
+	summaryPrint("")
+	summaryPrint("=== CLUSTER HEALTH SUMMARY ===")
+	summaryPrint("")
 
 	totalNodes := len(analysis.AllNodes)
 	issues := []string{}
@@ -282,62 +291,62 @@ func displayClusterSummary(analysis *ClusterAnalysis) {
 
 	// Display summary
 	if len(issues) == 0 && len(warnings) == 0 {
-		logMinimal("🎉 GALERA CLUSTER IN PERFECT HEALTH")
-		logMinimal("   ✅ Configuration coherent across all nodes")
+		summaryPrint("🎉 GALERA CLUSTER IN PERFECT HEALTH")
+		summaryPrint("   ✅ Configuration coherent across all nodes")
 		if hasMySQLData {
-			logMinimal("   ✅ All MySQL/MariaDB nodes responding correctly")
-			logMinimal("   ✅ All nodes synchronized and ready")
-			logMinimal("   ✅ Cluster in Primary state")
+			summaryPrint("   ✅ All MySQL/MariaDB nodes responding correctly")
+			summaryPrint("   ✅ All nodes synchronized and ready")
+			summaryPrint("   ✅ Cluster in Primary state")
 		}
-		logMinimal("")
-		logMinimal("📊 Total nodes: %d", totalNodes)
+		summaryPrint("")
+		summaryPrint("📊 Total nodes: %d", totalNodes)
 		if hasMySQLData {
-			logMinimal("🔗 Active nodes: %d/%d", respondingNodes, totalNodes)
+			summaryPrint("🔗 Active nodes: %d/%d", respondingNodes, totalNodes)
 		}
 	} else {
 		// Display problems
 		if len(issues) > 0 {
-			logMinimal("❌ CRITICAL ISSUES DETECTED:")
+			summaryPrint("❌ CRITICAL ISSUES DETECTED:")
 			for i, issue := range issues {
-				logMinimal("   %d. %s", i+1, issue)
+				summaryPrint("   %d. %s", i+1, issue)
 			}
-			logMinimal("")
+			summaryPrint("")
 		}
 
 		// Display warnings
 		if len(warnings) > 0 {
-			logMinimal("⚠️  WARNINGS:")
+			summaryPrint("⚠️  WARNINGS:")
 			for i, warning := range warnings {
-				logMinimal("   %d. %s", i+1, warning)
+				summaryPrint("   %d. %s", i+1, warning)
 			}
-			logMinimal("")
+			summaryPrint("")
 		}
 
 		// Status summary
-		logMinimal("📊 STATUS SUMMARY:")
-		logMinimal("   🏠 Total nodes: %d", totalNodes)
-		logMinimal("   ⚙️  Configuration coherent: %s", getStatusIcon(analysis.IsCoherent))
+		summaryPrint("📊 STATUS SUMMARY:")
+		summaryPrint("   🏠 Total nodes: %d", totalNodes)
+		summaryPrint("   ⚙️  Configuration coherent: %s", getStatusIcon(analysis.IsCoherent))
 
 		if hasMySQLData {
-			logMinimal("   🔗 MySQL/MariaDB active: %d/%d %s", respondingNodes, totalNodes, getStatusIcon(respondingNodes == totalNodes))
+			summaryPrint("   🔗 MySQL/MariaDB active: %d/%d %s", respondingNodes, totalNodes, getStatusIcon(respondingNodes == totalNodes))
 			if respondingNodes > 0 {
-				logMinimal("   ✅ Nodes ready: %d/%d %s", readyNodes, respondingNodes, getStatusIcon(readyNodes == respondingNodes))
-				logMinimal("   🎯 Primary state: %d/%d %s", primaryNodes, respondingNodes, getStatusIcon(primaryNodes == respondingNodes))
-				logMinimal("   🔄 Nodes synchronized: %d/%d %s", syncedNodes, respondingNodes, getStatusIcon(syncedNodes == respondingNodes))
+				summaryPrint("   ✅ Nodes ready: %d/%d %s", readyNodes, respondingNodes, getStatusIcon(readyNodes == respondingNodes))
+				summaryPrint("   🎯 Primary state: %d/%d %s", primaryNodes, respondingNodes, getStatusIcon(primaryNodes == respondingNodes))
+				summaryPrint("   🔄 Nodes synchronized: %d/%d %s", syncedNodes, respondingNodes, getStatusIcon(syncedNodes == respondingNodes))
 			}
 		} else {
-			logMinimal("   🔗 MySQL/MariaDB: Not checked")
+			summaryPrint("   🔗 MySQL/MariaDB: Not checked")
 		}
 
-		logMinimal("")
+		summaryPrint("")
 		if len(issues) > 0 {
-			logMinimal("🚨 ACTION REQUIRED: Cluster has issues that need immediate attention")
+			summaryPrint("🚨 ACTION REQUIRED: Cluster has issues that need immediate attention")
 		} else {
-			logMinimal("⚠️  ATTENTION: Cluster is functional but has minor warnings")
+			summaryPrint("⚠️  ATTENTION: Cluster is functional but has minor warnings")
 		}
 	}
 
-	logMinimal("")
+	summaryPrint("")
 } // getStatusIcon returns appropriate icon for boolean status
 func getStatusIcon(status bool) string {
 	if status {
