@@ -1,7 +1,8 @@
 # GaleraHea- 🔍 **Comprehensive Cluster Analysis**: Automatically discovers and analyzes all nodes in your Galera cluster
 - 🚀 **Automated Mode**: Use `-y` flag to run with saved defaults without any prompts - perfect for monitoring scripts
 - 📄 **Summary Mode**: Use `-y -s` for ultra-compact summary-only output ideal for monitoring dashboards
-- 🔐 **Smart SSH Authentication**: Supports both SSH keys and password authentication with intelligent fallback
+- � **Cluster Recovery**: Use `-r` flag to automatically attempt cluster recovery if nodes are down
+- �🔐 **Smart SSH Authentication**: Supports both SSH keys and password authentication with intelligent fallback
 - 🏠 **Localhost Optimization**: Automatically detects and optimizes performance when running on cluster nodes
 - 📊 **Configuration Coherence**: Validates that cluster configuration is consistent across all nodes
 - 🔗 **MySQL Status Monitoring**: Checks MySQL/MariaDB service status and cluster connectivity
@@ -77,6 +78,9 @@
 
 # Summary mode - show only final summary (requires -y)
 ./galerahealth -y -s   # or --summary
+
+# Recovery mode - attempt cluster recovery if needed
+./galerahealth -r      # or --recovery
 
 # With verbosity
 ./galerahealth -v      # Normal verbosity
@@ -183,6 +187,29 @@ $ ./galerahealth -y -s
 # log parsing, or quick status checks
 ```
 
+### Example 5: Cluster Recovery Mode
+```bash
+$ ./galerahealth -r
+=== GaleraHealth - Galera Cluster Monitor ===
+🔧 Run mode enabled - checking if cluster recovery is needed...
+🔍 Analyzing cluster state for recovery assessment...
+❌ Node 10.1.1.92: MySQL/MariaDB is not running
+❌ Node 10.1.1.93: MySQL/MariaDB is not running
+📊 Cluster state: 1/3 nodes running
+
+⚠️ Some cluster nodes are down - attempting to start them...
+🔄 Attempting to start MySQL/MariaDB on node 10.1.1.92...
+❓ Do you want to Start MySQL/MariaDB service on node 10.1.1.92? (y/N): y
+✅ Successfully started MySQL/MariaDB on node 10.1.1.92
+
+🔄 Attempting to start MySQL/MariaDB on node 10.1.1.93...
+❓ Do you want to Start MySQL/MariaDB service on node 10.1.1.93? (y/N): y
+✅ Successfully started MySQL/MariaDB on node 10.1.1.93
+```
+
+### Example 6: Troubleshooting with Verbosity
+```
+
 ## 🚀 Advanced Features
 
 ### Automated Mode (`-y`)
@@ -228,7 +255,7 @@ Enter the Galera cluster node IP (default: 10.1.1.91):
 📋 ✅ Found wsrep_cluster_address: gcomm://10.1.1.91,10.1.1.92,10.1.1.93
 ```
 
-### Example 6: Per-node Credentials
+### Example 7: Per-node Credentials
 ```bash
 $ ./galerahealth
 # First node uses default credentials
@@ -315,6 +342,33 @@ The `-s` flag must be used in combination with `-y` to provide ultra-compact out
 - 📊 **Dashboard Ready**: Perfect for monitoring systems and automated parsing
 - ⚡ **Quick Status**: Ideal for rapid health checks and monitoring scripts
 - ⚠️ **Requires `-y`**: Must be combined with automated mode
+
+### Cluster Recovery Mode (`-r` flag)
+
+The `-r` flag enables automatic cluster recovery attempts when nodes are detected as down:
+
+```bash
+# Recovery mode - monitor and attempt recovery
+./galerahealth -r
+
+# Recovery with verbosity for detailed logs
+./galerahealth -r -v
+```
+
+**Recovery Mode Features:**
+- 🔧 **Automatic Node Start**: Attempts to start down nodes using `systemctl start mariadb/mysql`
+- 🚀 **Smart Bootstrap**: For fully down clusters, selects the best node for `galera_new_cluster`
+- 📊 **Intelligent Selection**: Uses `seqno` from grastate.dat or latest .ibd file timestamps
+- 🤝 **User Confirmation**: Always asks permission before each recovery action (even with `-y` flag)
+- ⚙️ **Service Detection**: Automatically detects mariadb, mysql, or mysqld service names
+- 🔄 **Sequential Recovery**: Bootstraps primary node first, then starts remaining nodes
+
+**Bootstrap Node Selection Methods:**
+1. **Primary Method**: Highest `seqno` value from `/var/lib/mysql/grastate.dat`
+2. **Fallback Method**: Latest timestamp from `.ibd` files (used when seqno = -1)
+
+**⚠️ Important Security Note:**
+Recovery actions (`-r` flag) always require explicit user confirmation, even when combined with automated mode (`-y`). This is by design to prevent accidental destructive operations on production clusters.
 
 ### Verbosity Levels
 
@@ -452,6 +506,22 @@ if ./galerahealth -y > /dev/null 2>&1; then
 else
     echo "❌ Galera cluster has issues - check logs"
     ./galerahealth -y -v  # Get detailed output for debugging
+    exit 1
+fi
+```
+
+```bash
+#!/bin/bash
+# Automated cluster recovery script
+
+# Check cluster health and attempt recovery if needed
+if ./galerahealth -r -y > /dev/null 2>&1; then
+    echo "✅ Galera cluster is healthy (or successfully recovered)"
+    exit 0
+else
+    echo "❌ Galera cluster recovery failed - manual intervention required"
+    # Get detailed logs for troubleshooting
+    ./galerahealth -r -y -v
     exit 1
 fi
 ```

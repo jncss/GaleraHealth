@@ -75,6 +75,8 @@ func main() {
 			useDefaults = true
 		case arg == "-s", arg == "--summary":
 			reportMode = true
+		case arg == "-r", arg == "--recovery":
+			runMode = true
 		default:
 			args = append(args, arg)
 		}
@@ -109,6 +111,7 @@ func main() {
 			fmt.Println("  galerahealth                      Run the cluster monitor")
 			fmt.Println("  galerahealth -y                   Run using saved defaults without prompts")
 			fmt.Println("  galerahealth -y -s                Run automated with summary only")
+			fmt.Println("  galerahealth -r                   Monitor and attempt cluster recovery if needed")
 			fmt.Println("  galerahealth -v                   Run with normal verbosity")
 			fmt.Println("  galerahealth -vv                  Run with verbose output")
 			fmt.Println("  galerahealth -vvv                 Run with debug output")
@@ -120,6 +123,7 @@ func main() {
 			fmt.Println("Options:")
 			fmt.Println("  -y, --yes     - Use saved defaults without prompting")
 			fmt.Println("  -s, --summary - Show only final summary (requires -y)")
+			fmt.Println("  -r, --recovery - Attempt cluster recovery if nodes are down")
 			fmt.Println()
 			fmt.Println("Verbosity levels:")
 			fmt.Println("  (none) - Minimal output (default)")
@@ -312,10 +316,31 @@ func main() {
 			if !reportMode {
 				displayClusterAnalysisWithMySQL(analysis)
 			}
+
 		}
 
 		// Display final cluster summary
 		displayClusterSummary(analysis)
+
+		// If recovery mode (-r) is enabled, attempt cluster recovery AFTER showing the summary
+		if runMode {
+			logMinimal("")
+			logMinimal("🔧 Recovery mode enabled - checking if cluster recovery is needed...")
+
+			if checkMySQL {
+				// Recovery after MySQL check was done
+				err := attemptClusterRecoveryAfterMySQLCheck(analysis, config)
+				if err != nil {
+					logMinimal("❌ Cluster recovery failed: %v", err)
+				}
+			} else {
+				// Recovery without MySQL check - use basic analysis
+				err := attemptClusterRecoveryWithAnalysis(analysis, config)
+				if err != nil {
+					logMinimal("❌ Cluster recovery failed: %v", err)
+				}
+			}
+		}
 	} else {
 		// Create a basic analysis with just the initial node for summary
 		analysis := &ClusterAnalysis{
@@ -329,6 +354,17 @@ func main() {
 		logDebug("Creating single-node analysis for summary")
 		// Display basic summary for single node
 		displayClusterSummary(analysis)
+
+		// If recovery mode (-r) is enabled, attempt recovery for single node AFTER showing summary
+		if runMode {
+			logMinimal("")
+			logMinimal("🔧 Recovery mode enabled - checking if single node recovery is needed...")
+
+			err := attemptClusterRecoveryWithAnalysis(analysis, config)
+			if err != nil {
+				logMinimal("❌ Node recovery failed: %v", err)
+			}
+		}
 	}
 
 	logVerbose("Saving configuration for next time")
@@ -420,4 +456,112 @@ func getMySQLCredentialsWithDefault(defaultUsername string, config *Config, node
 		Username: username,
 		Password: password,
 	}
+}
+
+// attemptClusterRecoveryAfterMySQLCheck attempts recovery after MySQL analysis has been done
+func attemptClusterRecoveryAfterMySQLCheck(analysis *ClusterAnalysis, config *Config) error {
+	// Since MySQL check has been done, we should have information about node health
+	// Check if we need to look at the analysis to determine if recovery is needed
+
+	// TODO: For now, we don't have direct access to MySQL status results
+	// So we still need to do a basic recovery check, but we can be smarter about it
+
+	// If cluster configuration is coherent and no errors, likely MySQL check passed
+	// and nodes are healthy - do minimal recovery check
+	if analysis.IsCoherent && len(analysis.ConfigErrors) == 0 {
+		logVerbose("Cluster appears healthy from analysis, doing minimal recovery verification...")
+
+		// Quick check on primary node to avoid unnecessary SSH connections
+		primaryNode := analysis.InitialNode.NodeIP
+		if primaryNode == "localhost" || primaryNode == "127.0.0.1" {
+			cmd := "systemctl is-active mariadb mysqld mysql 2>/dev/null | head -1"
+			output, err := executeLocalCommand(cmd)
+			if err == nil && strings.TrimSpace(output) == "active" {
+				logMinimal("✅ Primary node MySQL/MariaDB is running and cluster appears healthy - no recovery needed")
+				return nil
+			}
+		}
+	}
+
+	// If we get here, either cluster has issues or we need to do full recovery analysis
+	logVerbose("Proceeding with detailed cluster state analysis for recovery...")
+	state, err := analyzeClusterState(analysis.ClusterNodes, config)
+	if err != nil {
+		return fmt.Errorf("failed to analyze cluster state: %v", err)
+	}
+
+	return performClusterRecovery(state, config)
+}
+
+// attemptClusterRecoveryWithAnalysis attempts to recover the cluster using existing analysis
+func attemptClusterRecoveryWithAnalysis(analysis *ClusterAnalysis, config *Config) error {
+	// If cluster analysis shows everything is coherent and we have no config errors,
+	// do a minimal check before proceeding with full recovery analysis
+	if analysis.IsCoherent && len(analysis.ConfigErrors) == 0 {
+		logVerbose("Cluster configuration appears healthy, doing minimal recovery check...")
+
+		// For single-node clusters or localhost, do a quick local check
+		if len(analysis.ClusterNodes) == 1 {
+			nodeIP := analysis.ClusterNodes[0]
+			if nodeIP == "localhost" || nodeIP == "127.0.0.1" {
+				cmd := "systemctl is-active mariadb mysqld mysql 2>/dev/null | head -1"
+				output, err := executeLocalCommand(cmd)
+				if err == nil && strings.TrimSpace(output) == "active" {
+					logMinimal("✅ Local MySQL/MariaDB is running - no recovery needed")
+					return nil
+				}
+			}
+		}
+	}
+
+	// Proceed with detailed recovery analysis
+	logVerbose("Proceeding with detailed cluster state analysis for recovery...")
+	state, err := analyzeClusterState(analysis.ClusterNodes, config)
+	if err != nil {
+		return fmt.Errorf("failed to analyze cluster state: %v", err)
+	}
+
+	// Attempt recovery based on cluster state
+	return performClusterRecovery(state, config)
+}
+
+// attemptClusterRecovery attempts to recover the cluster if needed
+func attemptClusterRecovery(clusterIPs []string, config *Config) error {
+	// First, do a quick check to see if we even need to attempt recovery
+	// If we have MySQL status information from previous checks, use that
+	quickCheck := true
+	for _, ip := range clusterIPs {
+		var cmd string
+		if ip == "localhost" || ip == "127.0.0.1" {
+			cmd = "systemctl is-active mariadb mysqld mysql 2>/dev/null | head -1"
+		} else {
+			// For remote nodes, we'll need to do a more detailed analysis
+			// But first let's see if we can avoid SSH by checking if localhost is part of cluster
+			quickCheck = false
+			break
+		}
+
+		if quickCheck {
+			output, err := executeLocalCommand(cmd)
+			if err != nil || strings.TrimSpace(output) != "active" {
+				quickCheck = false
+				break
+			}
+		}
+	}
+
+	// If quick check suggests all is well and we only have localhost, no need for detailed analysis
+	if quickCheck && len(clusterIPs) == 1 && (clusterIPs[0] == "localhost" || clusterIPs[0] == "127.0.0.1") {
+		logMinimal("✅ Local MySQL/MariaDB is running - no recovery needed")
+		return nil
+	}
+
+	// Need detailed analysis - analyze current cluster state
+	state, err := analyzeClusterState(clusterIPs, config)
+	if err != nil {
+		return fmt.Errorf("failed to analyze cluster state: %v", err)
+	}
+
+	// Attempt recovery based on cluster state
+	return performClusterRecovery(state, config)
 }

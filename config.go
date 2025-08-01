@@ -21,6 +21,9 @@ var useDefaults bool
 // External variable for -s option (summary mode - only show summary)
 var reportMode bool
 
+// External variable for -r option (recovery mode - attempt cluster recovery)
+var runMode bool
+
 // NodeCredentials holds SSH and MySQL credentials for a specific node
 type NodeCredentials struct {
 	NodeIP                 string `json:"node_ip"`
